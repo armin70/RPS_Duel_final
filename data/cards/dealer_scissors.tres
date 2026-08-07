@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cn145dmt3xx7d"]
+
+[ext_resource type="Texture2D" uid="uid://bjwyjcs81q5yn" path="res://art/cards/60.png" id="1_3ylj2"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="2_w3hij"]
+
+[resource]
+script = ExtResource("2_w3hij")
+card_id = &"dealer_scissors"
+display_name = "dealer scissors"
+gesture = 2
+front_texture = ExtResource("1_3ylj2")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

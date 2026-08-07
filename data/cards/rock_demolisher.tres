@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://eg67jfy768rm"]
+
+[ext_resource type="Texture2D" uid="uid://c30nmb3n101i8" path="res://art/cards/32.jpg" id="1_0ysfg"]
+[ext_resource type="Script" uid="uid://cirqleme7ys7h" path="res://core/cards/behaviors/discard_lane_draw_behavior.gd" id="1_ekfy1"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_wdtk8"]
+
+[sub_resource type="Resource" id="Resource_g4gwm"]
+script = ExtResource("1_ekfy1")
+metadata/_custom_type_script = "uid://cirqleme7ys7h"
+
+[resource]
+script = ExtResource("1_wdtk8")
+card_id = &"rock_demolisher"
+display_name = "rock demolisher"
+mana_cost = 3
+front_texture = ExtResource("1_0ysfg")
+behavior = SubResource("Resource_g4gwm")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

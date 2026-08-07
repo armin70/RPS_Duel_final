@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://dfg8nsel071j5"]
+
+[ext_resource type="Script" uid="uid://d1jgi2ci0sdmu" path="res://core/dealer/behaviors/discard_column_dealer_behavior.gd" id="1_ngl7w"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_o64v8"]
+[ext_resource type="Texture2D" uid="uid://du37li5wryju8" path="res://art/cards/D White.png" id="2_7p03t"]
+
+[sub_resource type="Resource" id="Resource_w83jj"]
+script = ExtResource("1_ngl7w")
+metadata/_custom_type_script = "uid://d1jgi2ci0sdmu"
+
+[resource]
+script = ExtResource("1_o64v8")
+card_id = &"pale_div"
+display_name = "pale div"
+gesture = 3
+front_texture = ExtResource("2_7p03t")
+dealer_behavior = SubResource("Resource_w83jj")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

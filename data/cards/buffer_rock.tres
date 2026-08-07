@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cwj874orypijn"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_roeyu"]
+[ext_resource type="Script" uid="uid://bwxksyjmf6rpd" path="res://core/cards/behaviors/front_shield_behavior.gd" id="1_vn2mi"]
+[ext_resource type="Texture2D" uid="uid://clilwl73ot4o1" path="res://art/cards/26.png" id="2_nr46n"]
+
+[sub_resource type="Resource" id="Resource_7q80n"]
+script = ExtResource("1_vn2mi")
+metadata/_custom_type_script = "uid://bwxksyjmf6rpd"
+
+[resource]
+script = ExtResource("1_roeyu")
+card_id = &"buffer_rock"
+display_name = "buffer_rock"
+mana_cost = 3
+front_texture = ExtResource("2_nr46n")
+behavior = SubResource("Resource_7q80n")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

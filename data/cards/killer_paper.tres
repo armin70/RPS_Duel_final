@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://dbdl5c2ia58r1"]
+
+[ext_resource type="Script" uid="uid://bs2blrv41ci6b" path="res://core/cards/behaviors/killer_behavior.gd" id="1_o1oyn"]
+[ext_resource type="Texture2D" uid="uid://cs55ankessrax" path="res://art/cards/Rps Card Design (7).png" id="2_o1oyn"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_fq6s0"]
+
+[sub_resource type="Resource" id="Resource_aihvp"]
+script = ExtResource("1_o1oyn")
+metadata/_custom_type_script = "uid://bs2blrv41ci6b"
+
+[resource]
+script = ExtResource("3_fq6s0")
+card_id = &"killer_paper"
+display_name = "killer paper"
+gesture = 1
+mana_cost = 4
+front_texture = ExtResource("2_o1oyn")
+behavior = SubResource("Resource_aihvp")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

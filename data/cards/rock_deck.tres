@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://c61676aosilvw"]
+
+[ext_resource type="Texture2D" uid="uid://b3jx8qgwpbbt1" path="res://art/8.png" id="1_5k3va"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_6sdfn"]
+
+[resource]
+script = ExtResource("1_6sdfn")
+card_id = &"rock_deck"
+display_name = "rock deck"
+front_texture = ExtResource("1_5k3va")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

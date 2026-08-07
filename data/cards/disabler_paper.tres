@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bo0tp8kiejjtr"]
+
+[ext_resource type="Script" uid="uid://c7x3gmsi5cxow" path="res://core/cards/behaviors/disable_gesture_behavior.gd" id="1_g44i5"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_hrkap"]
+[ext_resource type="Texture2D" uid="uid://d0j33ptaqhmmy" path="res://art/cards/36.png" id="2_g44i5"]
+
+[sub_resource type="Resource" id="Resource_g4k6p"]
+script = ExtResource("1_g44i5")
+disabled_gesture = 1
+metadata/_custom_type_script = "uid://c7x3gmsi5cxow"
+
+[resource]
+script = ExtResource("1_hrkap")
+card_id = &"disabler_paper"
+display_name = "disabler paper"
+gesture = 1
+mana_cost = 5
+front_texture = ExtResource("2_g44i5")
+behavior = SubResource("Resource_g4k6p")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

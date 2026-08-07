@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://tlpd8apbnib6"]
+
+[ext_resource type="Script" uid="uid://cirqleme7ys7h" path="res://core/cards/behaviors/discard_lane_draw_behavior.gd" id="1_7v85t"]
+[ext_resource type="Texture2D" uid="uid://jdjk3xcxsanc" path="res://art/cards/31.jpg" id="2_7v85t"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_jtc1l"]
+
+[sub_resource type="Resource" id="Resource_0ysfg"]
+script = ExtResource("1_7v85t")
+metadata/_custom_type_script = "uid://cirqleme7ys7h"
+
+[resource]
+script = ExtResource("3_jtc1l")
+card_id = &"paper_demolisher"
+display_name = "paper_demolisher"
+gesture = 1
+mana_cost = 3
+front_texture = ExtResource("2_7v85t")
+behavior = SubResource("Resource_0ysfg")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

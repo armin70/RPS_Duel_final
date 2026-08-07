@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://2qqmejvpiaam"]
+
+[ext_resource type="Texture2D" uid="uid://bjntjidig0si6" path="res://art/cards/61.png" id="1_72vr0"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_hi0f6"]
+
+[resource]
+script = ExtResource("1_hi0f6")
+card_id = &"dealer_rock"
+display_name = "dealer rock"
+front_texture = ExtResource("1_72vr0")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

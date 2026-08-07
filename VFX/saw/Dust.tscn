@@ -1,0 +1,82 @@
+[gd_scene format=3 uid="uid://driwh8eqde3jy"]
+
+[sub_resource type="Curve" id="Curve_2sy0c"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.7258065, 0.8392858), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_2xavq"]
+curve = SubResource("Curve_2sy0c")
+
+[sub_resource type="Curve" id="Curve_ojela"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 2), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_lm02y"]
+curve = SubResource("Curve_ojela")
+
+[sub_resource type="Curve" id="Curve_7yhor"]
+_data = [Vector2(0.02150537, 0), 0.0, 0.0, 0, 0, Vector2(0.63978493, 0.63392866), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_ijktp"]
+curve = SubResource("Curve_7yhor")
+
+[sub_resource type="Curve" id="Curve_62wu1"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.4139785, 0.107142925), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_a6ql4"]
+curve = SubResource("Curve_62wu1")
+
+[sub_resource type="Curve" id="Curve_gvk8i"]
+_limits = [0.0, 3.0, 0.0, 1.0]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_ser3x"]
+curve = SubResource("Curve_gvk8i")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_gvk8i"]
+lifetime_randomness = 0.05
+direction = Vector3(0, 0, 1)
+spread = 83.382
+flatness = 0.478
+initial_velocity_min = 0.19999999
+initial_velocity_max = 0.59999996
+gravity = Vector3(6.04, 1.31, 0)
+linear_accel_min = -8.540002
+linear_accel_max = 0.99999774
+linear_accel_curve = SubResource("CurveTexture_ijktp")
+damping_min = 1.5000001
+damping_max = 2.5
+scale_curve = SubResource("CurveTexture_a6ql4")
+scale_over_velocity_curve = SubResource("CurveTexture_ser3x")
+color = Color(0.3201756, 0.09969885, 0, 1)
+alpha_curve = SubResource("CurveTexture_2xavq")
+emission_curve = SubResource("CurveTexture_lm02y")
+hue_variation_min = -0.18000002
+hue_variation_max = 0.41999996
+collision_mode = 1
+collision_friction = 0.0
+collision_bounce = 0.5
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6hj53"]
+transparency = 1
+blend_mode = 1
+albedo_color = Color(0.54509807, 0.21568628, 0, 0.7764706)
+
+[sub_resource type="SphereMesh" id="SphereMesh_v8u5c"]
+material = SubResource("StandardMaterial3D_6hj53")
+radius = 0.802
+height = 1.485
+rings = 6
+
+[node name="Dirt" type="GPUParticles3D" unique_id=2064943996]
+amount = 200
+speed_scale = 0.6
+randomness = 1.0
+fixed_fps = 60
+collision_base_size = 0.0
+process_material = SubResource("ParticleProcessMaterial_gvk8i")
+draw_pass_1 = SubResource("SphereMesh_v8u5c")

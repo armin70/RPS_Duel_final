@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://sq3fr62qtyve"]
+
+[ext_resource type="Texture2D" uid="uid://y3d78agqguhr" path="res://art/cards/62.png" id="1_gpfgd"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="2_wo42o"]
+
+[resource]
+script = ExtResource("2_wo42o")
+card_id = &"dealer_paper"
+display_name = "dealer paper"
+gesture = 1
+front_texture = ExtResource("1_gpfgd")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

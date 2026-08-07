@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://ovnyakbjgrc6"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_pcvxl"]
+[ext_resource type="Texture2D" uid="uid://cwx0pa8srdhd" path="res://art/cards/1.png" id="1_vcgnu"]
+
+[resource]
+script = ExtResource("1_pcvxl")
+card_id = &"normal_scissors"
+display_name = "Scissors"
+gesture = 2
+mana_cost = 2
+visual_id = &"scissors"
+front_texture = ExtResource("1_vcgnu")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

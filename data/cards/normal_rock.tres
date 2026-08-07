@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://djnkmyua3qr1h"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_5tn7f"]
+[ext_resource type="Texture2D" uid="uid://bq8b8ts3c7mti" path="res://art/cards/2.png" id="1_kilp8"]
+
+[resource]
+script = ExtResource("1_5tn7f")
+card_id = &"normal_rock"
+display_name = "Rock"
+mana_cost = 2
+visual_id = &"rock"
+front_texture = ExtResource("1_kilp8")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

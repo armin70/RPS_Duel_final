@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cftj5lk2pkvhv"]
+
+[ext_resource type="Script" uid="uid://bwxksyjmf6rpd" path="res://core/cards/behaviors/front_shield_behavior.gd" id="1_m2nyl"]
+[ext_resource type="Texture2D" uid="uid://egg88ebhaefq" path="res://art/cards/27.png" id="2_m2nyl"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_ytv6r"]
+
+[sub_resource type="Resource" id="Resource_7q80n"]
+script = ExtResource("1_m2nyl")
+metadata/_custom_type_script = "uid://bwxksyjmf6rpd"
+
+[resource]
+script = ExtResource("3_ytv6r")
+card_id = &"buffer_scissors"
+display_name = "buffer_scissors"
+gesture = 2
+mana_cost = 3
+front_texture = ExtResource("2_m2nyl")
+behavior = SubResource("Resource_7q80n")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

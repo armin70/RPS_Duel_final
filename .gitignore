@@ -1,0 +1,30 @@
+# Godot generated files
+.godot/
+.import/
+
+# Godot credentials
+export_credentials.cfg
+
+# Exported builds
+build/
+builds/
+export/
+exports/
+
+# Blender backup files
+*.blend1
+*.blend2
+*.blend@
+*.blend~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/

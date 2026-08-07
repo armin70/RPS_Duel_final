@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="MatchRules" format=3 uid="uid://57vjxew312gp"]
+
+[ext_resource type="Script" uid="uid://b7wnyd3ah2kl3" path="res://core/rules/match_rules.gd" id="1_tb61g"]
+
+[resource]
+script = ExtResource("1_tb61g")
+winning_score_difference = 30
+metadata/_custom_type_script = "uid://b7wnyd3ah2kl3"

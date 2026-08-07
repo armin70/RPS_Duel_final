@@ -1,0 +1,163 @@
+[gd_scene format=3 uid="uid://8wv80fi85cj2"]
+
+[ext_resource type="AudioStream" uid="uid://cfn44oh4a3g3x" path="res://VFX/sibil/SibilFightSFX.mp3" id="1_r5vfe"]
+
+[sub_resource type="Curve" id="Curve_a6ql4"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.62783176, 0.79999995), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_dv3wt"]
+curve = SubResource("Curve_a6ql4")
+
+[sub_resource type="Curve" id="Curve_ser3x"]
+_limits = [0.0, 2.0, 0.0, 1.0]
+_data = [Vector2(0, 2), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_ipckt"]
+curve = SubResource("Curve_ser3x")
+
+[sub_resource type="Curve" id="Curve_6hj53"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.24919096, 0.99999994), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_fs855"]
+curve = SubResource("Curve_6hj53")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_cvi5e"]
+emission_shape = 1
+emission_sphere_radius = 1.0
+velocity_pivot = Vector3(0, 1, 0)
+flatness = 0.5
+initial_velocity_max = 0.099999994
+gravity = Vector3(0, -0.02, 0)
+scale_min = 0.099999994
+scale_max = 0.5
+scale_curve = SubResource("CurveTexture_fs855")
+color = Color(1.4643909, 1.4643909, 1.4643909, 0)
+alpha_curve = SubResource("CurveTexture_dv3wt")
+emission_curve = SubResource("CurveTexture_ipckt")
+collision_mode = 1
+collision_friction = 0.0
+collision_bounce = 0.08
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vppyn"]
+transparency = 1
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(0.09923177, 0.09923177, 0.09923177, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_e1f7d"]
+material = SubResource("StandardMaterial3D_vppyn")
+radial_segments = 10
+rings = 10
+
+[sub_resource type="Animation" id="Animation_2xavq"]
+resource_name = "Fight"
+length = 2.9
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:emitting")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.1, 2.3),
+"transitions": PackedFloat32Array(4.9245744, 1.1095668, 4.9245744),
+"update": 1,
+"values": [false, true, false]
+}
+tracks/1/type = "bezier"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath(".:process_material:color:r")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"handle_modes": PackedInt32Array(0, 2),
+"points": PackedFloat32Array(1.4643909, -0.25, 0, 0.25, 0, 1.4643909, -0.04, 0, 0, 0),
+"times": PackedFloat32Array(0, 0.24)
+}
+tracks/2/type = "bezier"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath(".:process_material:color:g")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"handle_modes": PackedInt32Array(0, 2),
+"points": PackedFloat32Array(1.4643909, -0.25, 0, 0.25, 0, 1.4643909, -0.04, 0, 0, 0),
+"times": PackedFloat32Array(0, 0.24)
+}
+tracks/3/type = "bezier"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath(".:process_material:color:b")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"handle_modes": PackedInt32Array(0, 2),
+"points": PackedFloat32Array(1.4643909, -0.25, 0, 0.25, 0, 1.4643909, -0.04, 0, 0, 0),
+"times": PackedFloat32Array(0, 0.24)
+}
+tracks/4/type = "bezier"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath(".:process_material:color:a")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"handle_modes": PackedInt32Array(0, 2),
+"points": PackedFloat32Array(0, -0.25, 0, 0.25, 0, 0.5568628, -0.04, -0.09281047, 0, 0),
+"times": PackedFloat32Array(0, 0.24)
+}
+tracks/5/type = "audio"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("AudioStreamPlayer3D")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = {
+"clips": [{
+"end_offset": 0.0,
+"start_offset": 0.0,
+"stream": ExtResource("1_r5vfe")
+}],
+"times": PackedFloat32Array(0.16666663)
+}
+tracks/5/use_blend = true
+
+[sub_resource type="Animation" id="Animation_lm02y"]
+length = 2.621
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath(".:emitting")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.033333335, 0.06666667, 0.1, 0.13333334, 0.16666667, 0.2, 0.23333333, 0.26666668, 0.3, 0.33333334, 0.36666667, 0.4, 0.43333334, 0.46666667, 0.5, 0.53333336, 0.56666666, 0.6, 0.6333333, 0.6666667, 0.7, 0.73333335, 0.76666665, 0.8, 0.8333333, 0.8666667, 0.9, 0.93333334, 0.96666664, 1, 1.0333333, 1.0666667, 1.1, 1.1333333, 1.1666666, 1.2, 1.2333333, 1.2666667, 1.3, 1.3333334, 1.3666667, 1.4, 1.4333333, 1.4666667, 1.5, 1.5333333, 1.5666667, 1.6, 1.6333333, 1.6666666, 1.7, 1.7333333, 1.7666667, 1.8, 1.8333334, 1.8666667, 1.9, 1.9333333, 1.9666667, 2, 2.0333333, 2.0666666, 2.1, 2.1333334, 2.1666667, 2.2, 2.2333333, 2.2666667, 2.3, 2.3333333, 2.3666666, 2.4, 2.4333334, 2.4666667, 2.5, 2.5333333, 2.5666666, 2.6),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 1,
+"values": [false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_lm02y"]
+_data = {
+&"Fight": SubResource("Animation_2xavq"),
+&"RESET": SubResource("Animation_lm02y")
+}
+
+[node name="Sibil_Fight" type="GPUParticles3D" unique_id=1813516043]
+transform = Transform3D(2.4800649, 0, 0, 0, 0.20938538, 0, 0, 0, 0.35004973, 0, 0, 0)
+emitting = false
+amount = 400
+preprocess = 0.78
+fixed_fps = 60
+process_material = SubResource("ParticleProcessMaterial_cvi5e")
+draw_pass_1 = SubResource("SphereMesh_e1f7d")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1804993455]
+libraries/ = SubResource("AnimationLibrary_lm02y")
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="." unique_id=129307742]

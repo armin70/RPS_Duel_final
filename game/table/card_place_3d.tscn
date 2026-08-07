@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://y41sb3v7es7c"]
+
+[ext_resource type="Script" uid="uid://do8qa0y83wp2a" path="res://game/table/card_place_3d.gd" id="1_at33a"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_78dhm"]
+size = Vector3(0.32, 0.02, 0.449)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_at33a"]
+shading_mode = 0
+albedo_color = Color(0.63529414, 1, 1, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_gc5er"]
+size = Vector3(0.32, 0.02, 0.449)
+
+[node name="card_place_3d" type="Area3D" unique_id=1644330271]
+collision_layer = 2
+collision_mask = 0
+input_ray_pickable = false
+script = ExtResource("1_at33a")
+
+[node name="SlotMesh" type="MeshInstance3D" parent="." unique_id=1077446210]
+visible = false
+mesh = SubResource("BoxMesh_78dhm")
+surface_material_override/0 = SubResource("StandardMaterial3D_at33a")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=836386404]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, 0)
+shape = SubResource("BoxShape3D_gc5er")
+
+[node name="CardAnchor" type="Marker3D" parent="." unique_id=1643204823]
+
+[node name="DebugLabel" type="Label3D" parent="." unique_id=1393044512]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, 0)
+billboard = 1
+font_size = 24

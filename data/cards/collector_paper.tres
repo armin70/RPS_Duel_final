@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://b4svrmcetf456"]
+
+[ext_resource type="Script" uid="uid://x34p7rpd0swt" path="res://core/cards/behaviors/collector_behavior.gd" id="1_7io8t"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_et4f6"]
+[ext_resource type="Texture2D" uid="uid://rfeiihj8rdt3" path="res://art/cards/22.png" id="2_7io8t"]
+
+[sub_resource type="Resource" id="Resource_ucy28"]
+script = ExtResource("1_7io8t")
+collected_gesture = 1
+metadata/_custom_type_script = "uid://x34p7rpd0swt"
+
+[resource]
+script = ExtResource("1_et4f6")
+card_id = &"collector_paper"
+display_name = "Paper Collector"
+gesture = 1
+mana_cost = 3
+front_texture = ExtResource("2_7io8t")
+behavior = SubResource("Resource_ucy28")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

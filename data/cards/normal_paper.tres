@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://crj8duj0hfwi3"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_l881g"]
+[ext_resource type="Texture2D" uid="uid://g3sik4002ciy" path="res://art/cards/3.png" id="1_o70g3"]
+
+[resource]
+script = ExtResource("1_l881g")
+card_id = &"normal_paper"
+display_name = "Paper"
+gesture = 1
+mana_cost = 2
+front_texture = ExtResource("1_o70g3")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

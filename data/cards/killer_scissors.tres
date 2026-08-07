@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cx1gkltjetjq5"]
+
+[ext_resource type="Script" uid="uid://bs2blrv41ci6b" path="res://core/cards/behaviors/killer_behavior.gd" id="1_8knnj"]
+[ext_resource type="Texture2D" uid="uid://dqguaby8wbgwu" path="res://art/cards/Rps Card Design (9).png" id="2_8knnj"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_a672o"]
+
+[sub_resource type="Resource" id="Resource_aihvp"]
+script = ExtResource("1_8knnj")
+metadata/_custom_type_script = "uid://bs2blrv41ci6b"
+
+[resource]
+script = ExtResource("3_a672o")
+card_id = &"killer_scissors"
+display_name = "killer scissors"
+gesture = 2
+mana_cost = 4
+front_texture = ExtResource("2_8knnj")
+behavior = SubResource("Resource_aihvp")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

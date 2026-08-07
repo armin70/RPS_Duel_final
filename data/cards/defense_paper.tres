@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://d1o8wuvky4y3s"]
+
+[ext_resource type="Script" uid="uid://8dbm7y35e4x8" path="res://core/cards/behaviors/defense_behavior.gd" id="1_aksl4"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_n3b8h"]
+[ext_resource type="Texture2D" uid="uid://dcp4xffkfpaen" path="res://art/cards/12.png" id="2_aksl4"]
+
+[sub_resource type="Resource" id="Resource_0em6d"]
+script = ExtResource("1_aksl4")
+metadata/_custom_type_script = "uid://8dbm7y35e4x8"
+
+[resource]
+script = ExtResource("1_n3b8h")
+card_id = &"defense_paper"
+display_name = "Defense Paper"
+gesture = 1
+mana_cost = 4
+front_texture = ExtResource("2_aksl4")
+behavior = SubResource("Resource_0em6d")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

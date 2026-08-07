@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://c7efnls1u08to"
+path="res://.godot/imported/Silence Ready.mp3-758dac791858daabf52773db0f3157c8.mp3str"
+
+[deps]
+
+source_file="res://VFX/disabler/Silence Ready.mp3"
+dest_files=["res://.godot/imported/Silence Ready.mp3-758dac791858daabf52773db0f3157c8.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

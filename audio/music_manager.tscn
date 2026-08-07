@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://cdoe50rvfsbil"]
+
+[ext_resource type="Script" uid="uid://b63d3w0roma0r" path="res://audio/music_manager.gd" id="1_1826a"]
+[ext_resource type="AudioStream" uid="uid://ddt56v5fasng2" path="res://art/YTDown_com_YouTube_Hearthstone_Soundtrack_Better_Hand_Media_ekuqd8.mp3" id="1_ip8bo"]
+
+[node name="MusicManager" type="Node" unique_id=1656370774]
+script = ExtResource("1_1826a")
+
+[node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=1400860265]
+stream = ExtResource("1_ip8bo")
+autoplay = true

@@ -1,0 +1,328 @@
+[gd_scene format=3 uid="uid://4j2c2m42kv3f"]
+
+[ext_resource type="PackedScene" uid="uid://6g8nfnr2m5s" path="res://art/main_land/sky.glb" id="1_j7ffe"]
+[ext_resource type="Script" uid="uid://61mdtpx0mhpy" path="res://game/table/game_layout.gd" id="1_v3atx"]
+[ext_resource type="PackedScene" uid="uid://y41sb3v7es7c" path="res://game/table/card_place_3d.tscn" id="2_7of5j"]
+[ext_resource type="PackedScene" uid="uid://jw4v6vchxd0a" path="res://art/main_land/environment.glb" id="2_kqp58"]
+[ext_resource type="Script" uid="uid://dp6ghb3kp71ga" path="res://game/match_controller_3d.gd" id="3_g4axw"]
+[ext_resource type="PackedScene" uid="uid://b346yb626whtk" path="res://art/main_land/battleground.glb" id="3_g56ji"]
+[ext_resource type="PackedScene" uid="uid://mey4xdpnjtbf" path="res://game/table/card_pile_3d.tscn" id="4_ult0l"]
+[ext_resource type="Resource" uid="uid://57vjxew312gp" path="res://data/rules/default_match_rules.tres" id="4_v3atx"]
+[ext_resource type="PackedScene" uid="uid://doelnx2jhw4b2" path="res://game/table/game_balance_scale_3d.tscn" id="5_8b6m4"]
+[ext_resource type="Resource" uid="uid://ry2pgu63y4qe" path="res://data/decks/starter_deck.tres" id="5_xheak"]
+[ext_resource type="Resource" uid="uid://btrccapipoth7" path="res://data/decks/dealer_deck.tres" id="6_pdiy6"]
+[ext_resource type="PackedScene" uid="uid://8wv80fi85cj2" path="res://VFX/sibil/sibil_fight.tscn" id="7_pp1d7"]
+[ext_resource type="PackedScene" uid="uid://dklk3d2njec5" path="res://game/cards/card_3d.tscn" id="7_ult0l"]
+[ext_resource type="Script" uid="uid://cvvu1lfwi7b3q" path="res://game/ui/game_hud.gd" id="8_xheak"]
+[ext_resource type="PackedScene" uid="uid://bq703boj20kcj" path="res://art/main_land/Land&Inviormentglb.glb" id="14_3ce54"]
+[ext_resource type="PackedScene" uid="uid://pl5n5xkhucko" path="res://VFX/saw/saw(dirt).tscn" id="17_kqp58"]
+
+[sub_resource type="Environment" id="Environment_g4axw"]
+background_mode = 2
+background_color = Color(1.0378193e-07, 0.009764861, 0.07549808, 1)
+ambient_light_color = Color(0.3733015, 0.89404994, 0.9999998, 1)
+ambient_light_energy = 0.6
+
+[node name="MainGame" type="Node3D" unique_id=2055770389]
+
+[node name="BoardVisual" type="Node3D" parent="." unique_id=1145592782]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2.1250865, 0.7928772)
+
+[node name="sky" parent="BoardVisual" unique_id=597714187 instance=ExtResource("1_j7ffe")]
+
+[node name="environment" parent="BoardVisual" unique_id=1436218376 instance=ExtResource("2_kqp58")]
+
+[node name="battleground" parent="BoardVisual" unique_id=297718425 instance=ExtResource("3_g56ji")]
+
+[node name="GameLayout" type="Node3D" parent="." unique_id=1507115213]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+script = ExtResource("1_v3atx")
+
+[node name="OpponentHand" type="Node3D" parent="GameLayout" unique_id=1812289617]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02472733, -2.5554361)
+
+[node name="OpponentBoard" type="Node3D" parent="GameLayout" unique_id=818209531]
+
+[node name="BackRow" type="Node3D" parent="GameLayout/OpponentBoard" unique_id=761737918]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -5.5)
+
+[node name="BackLeft" parent="GameLayout/OpponentBoard/BackRow" unique_id=1644330271 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, -0.3, 3.9)
+owner_id = 1
+logical_id = 4
+
+[node name="BackMiddle0" parent="GameLayout/OpponentBoard/BackRow" unique_id=1923244690 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, -0.3, 3.9)
+owner_id = 1
+logical_id = 5
+
+[node name="BackMiddle1" parent="GameLayout/OpponentBoard/BackRow" unique_id=2057797898 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.3, 3.9)
+owner_id = 1
+logical_id = 6
+
+[node name="BackRight" parent="GameLayout/OpponentBoard/BackRow" unique_id=1040064076 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, 3.9)
+owner_id = 1
+logical_id = 7
+
+[node name="FrontRow" type="Node3D" parent="GameLayout/OpponentBoard" unique_id=1801741486]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.8)
+
+[node name="FrontLeft" parent="GameLayout/OpponentBoard/FrontRow" unique_id=1220839597 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, -0.3, 1.85)
+owner_id = 1
+logical_id = 0
+
+[node name="FrontMiddle0" parent="GameLayout/OpponentBoard/FrontRow" unique_id=349636629 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, -0.3, 1.85)
+logical_id = 1
+
+[node name="FrontMiddle1" parent="GameLayout/OpponentBoard/FrontRow" unique_id=614363606 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.3, 1.85)
+logical_id = 2
+
+[node name="FrontRight" parent="GameLayout/OpponentBoard/FrontRow" unique_id=1892371311 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, 1.85)
+logical_id = 3
+
+[node name="DealerRow" type="Node3D" parent="GameLayout" unique_id=242341621]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.2)
+
+[node name="DealerLeft" parent="GameLayout/DealerRow" unique_id=2110180199 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, -0.3, 0)
+kind = 1
+logical_id = 0
+
+[node name="DealerMiddle0" parent="GameLayout/DealerRow" unique_id=1401993184 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, -0.3, 0)
+kind = 1
+logical_id = 1
+
+[node name="DealerMiddle1" parent="GameLayout/DealerRow" unique_id=1446231935 instance=ExtResource("2_7of5j")]
+transform = Transform3D(0.99927425, 0.001485536, -0.038062755, -0.0014604714, 0.9999987, 0.0006863566, 0.038063716, -0.00063027366, 0.99927515, 0.25, -0.3, 0)
+kind = 1
+logical_id = 2
+
+[node name="DealerRight" parent="GameLayout/DealerRow" unique_id=855153319 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, 0)
+kind = 1
+logical_id = 3
+
+[node name="PlayerBoard" type="Node3D" parent="GameLayout" unique_id=1216177435]
+
+[node name="BackRow" type="Node3D" parent="GameLayout/PlayerBoard" unique_id=1960441128]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4.8)
+
+[node name="BackLeft" parent="GameLayout/PlayerBoard/BackRow" unique_id=578777968 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, -0.3, -3.6)
+owner_id = 1
+logical_id = 4
+
+[node name="BackMiddle0" parent="GameLayout/PlayerBoard/BackRow" unique_id=2083266437 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, -0.3, -3.6)
+owner_id = 1
+logical_id = 5
+
+[node name="BackMiddle1" parent="GameLayout/PlayerBoard/BackRow" unique_id=619181011 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.3, -3.6)
+owner_id = 1
+logical_id = 6
+
+[node name="BackRight" parent="GameLayout/PlayerBoard/BackRow" unique_id=32464806 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, -3.6)
+owner_id = 1
+logical_id = 7
+
+[node name="FrontRow" type="Node3D" parent="GameLayout/PlayerBoard" unique_id=1401076226]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2.3)
+
+[node name="FrontLeft" parent="GameLayout/PlayerBoard/FrontRow" unique_id=262275839 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.9, -0.3, -1.8)
+owner_id = 1
+logical_id = 0
+
+[node name="FrontMiddle0" parent="GameLayout/PlayerBoard/FrontRow" unique_id=597957214 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.25, -0.3, -1.8)
+logical_id = 1
+
+[node name="FrontMiddle1" parent="GameLayout/PlayerBoard/FrontRow" unique_id=1389574647 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.25, -0.3, -1.8)
+logical_id = 2
+
+[node name="FrontRight" parent="GameLayout/PlayerBoard/FrontRow" unique_id=657321977 instance=ExtResource("2_7of5j")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, -1.8)
+logical_id = 3
+
+[node name="PlayerHand" type="Node3D" parent="GameLayout" unique_id=1200663976]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.553, 0.645)
+
+[node name="PlayerPiles" type="Node3D" parent="GameLayout" unique_id=1399730841]
+
+[node name="DrawPile" parent="GameLayout/PlayerPiles" unique_id=1075737316 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3689705, -0.3, 1.8170847)
+
+[node name="DiscardPile" parent="GameLayout/PlayerPiles" unique_id=1044535613 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3520367, -0.3, 1.5049325)
+pile_type = 1
+
+[node name="ReservePile" parent="GameLayout/PlayerPiles" unique_id=509751854 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6940175, -0.3, 1.4845884)
+pile_type = 2
+
+[node name="OpponentPiles" type="Node3D" parent="GameLayout" unique_id=1308555787]
+
+[node name="DrawPile" parent="GameLayout/OpponentPiles" unique_id=521947117 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.3092632, -0.54875845, -2.4750035)
+owner_id = 2
+
+[node name="DiscardPile" parent="GameLayout/OpponentPiles" unique_id=1241417588 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.1838273, -0.38831156, -2.5654612)
+owner_id = 2
+pile_type = 1
+
+[node name="ReservePile" parent="GameLayout/OpponentPiles" unique_id=699035948 instance=ExtResource("4_ult0l")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.5659125, -0.41143757, -2.5434132)
+owner_id = 2
+pile_type = 2
+
+[node name="RuntimeCards" type="Node3D" parent="." unique_id=179306654]
+
+[node name="GameBalanceScale3d" parent="." unique_id=1049004180 instance=ExtResource("5_8b6m4")]
+transform = Transform3D(0.28066686, 0, 0.95980525, 0, 1, 0, -0.95980525, 0, 0.28066686, -1.1181582, -0.4530015, 0.08330011)
+max_tilt_degrees = 35.0
+
+[node name="MatchController3D" type="Node3D" parent="." unique_id=1855810425 node_paths=PackedStringArray("saw_vfx_spawn", "mustache_vfx_spawn", "game_layout", "runtime_cards", "camera_3d", "hud", "balance_scale")]
+script = ExtResource("3_g4axw")
+saw_vfx_spawn = NodePath("SawVFXSpawn")
+saw_sound_volume_db = 10.0
+MUSTACHE_VFX_SCENE = ExtResource("7_pp1d7")
+mustache_vfx_spawn = NodePath("sibilVFXSpawn")
+SAW_DIRT_SCENE = ExtResource("17_kqp58")
+rules = ExtResource("4_v3atx")
+player_one_deck = ExtResource("5_xheak")
+player_two_deck = ExtResource("5_xheak")
+dealer_deck = ExtResource("6_pdiy6")
+game_layout = NodePath("../GameLayout")
+card_scene = ExtResource("7_ult0l")
+runtime_cards = NodePath("../RuntimeCards")
+camera_3d = NodePath("../Camera3D")
+hud = NodePath("../HUD")
+balance_scale = NodePath("../GameBalanceScale3d")
+
+[node name="SawVFXSpawn" type="Node3D" parent="MatchController3D" unique_id=1173535733]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.176, 0.11, 0.002)
+
+[node name="sibilVFXSpawn" type="Node3D" parent="MatchController3D" unique_id=978057829]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.01686421, 0.06615591, 0.107403874)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1555863791]
+transform = Transform3D(0.8660254, 0.40957603, -0.28678823, 0, 0.57357645, 0.81915206, 0.5, -0.7094065, 0.49673176, 0, 2.693636, -5.39493)
+shadow_enabled = true
+shadow_opacity = 0.68
+shadow_blur = 2.625
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1403354002]
+environment = SubResource("Environment_g4axw")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1052474298]
+transform = Transform3D(1, 0, 0, 0, 0.59622484, 0.80281746, 0, -0.80281746, 0.59622484, 0, 3.066, 2.596)
+fov = 45.0
+size = 0.02
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1916526783]
+script = ExtResource("8_xheak")
+
+[node name="Root" type="Control" parent="HUD" unique_id=593682323]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="PlayerInfo" type="VBoxContainer" parent="HUD/Root" unique_id=882077475]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="TurnLabel" type="Label" parent="HUD/Root/PlayerInfo" unique_id=701096677]
+layout_mode = 2
+
+[node name="PlayerScoreLabel" type="Label" parent="HUD/Root/PlayerInfo" unique_id=1006718452]
+layout_mode = 2
+
+[node name="OpponentScoreLabel" type="Label" parent="HUD/Root/PlayerInfo" unique_id=433589157]
+layout_mode = 2
+
+[node name="PlayerManaLabel" type="Label" parent="HUD/Root/PlayerInfo" unique_id=2067357322]
+layout_mode = 2
+
+[node name="OpponentManaLabel" type="Label" parent="HUD/Root/PlayerInfo" unique_id=1154268974]
+layout_mode = 2
+
+[node name="EndTurnButton" type="Button" parent="HUD/Root" unique_id=1807009853]
+layout_mode = 0
+offset_top = 135.0
+offset_right = 40.0
+offset_bottom = 143.0
+
+[node name="GameOverOverlay" type="Control" parent="HUD" unique_id=773843070]
+unique_name_in_owner = true
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DarkBackground" type="ColorRect" parent="HUD/GameOverOverlay" unique_id=1350555880]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(1, 1, 1, 0.5058824)
+
+[node name="CenterContainer" type="CenterContainer" parent="HUD/GameOverOverlay" unique_id=908931724]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="GameOverPanel" type="PanelContainer" parent="HUD/GameOverOverlay/CenterContainer" unique_id=1770182422]
+custom_minimum_size = Vector2(520, 320)
+layout_mode = 2
+
+[node name="Content" type="VBoxContainer" parent="HUD/GameOverOverlay/CenterContainer/GameOverPanel" unique_id=1646837396]
+layout_mode = 2
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="ResultLabel" type="Label" parent="HUD/GameOverOverlay/CenterContainer/GameOverPanel/Content" unique_id=124851630]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 64
+text = "YOU WIN"
+horizontal_alignment = 1
+
+[node name="ScoreLabel" type="Label" parent="HUD/GameOverOverlay/CenterContainer/GameOverPanel/Content" unique_id=1979214827]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Your Score: 0
+Opponent Score: 0"
+horizontal_alignment = 1
+
+[node name="RestartButton" type="Button" parent="HUD/GameOverOverlay/CenterContainer/GameOverPanel/Content" unique_id=2074560471]
+unique_name_in_owner = true
+layout_mode = 2
+text = "restart"
+
+[node name="Land&Inviormentglb" parent="." unique_id=484891852 instance=ExtResource("14_3ce54")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.010148585, -2.1840038, 0.76225173)
+visible = false

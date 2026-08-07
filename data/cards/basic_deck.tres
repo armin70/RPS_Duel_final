@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://dq4xne4ldl7tp"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_esruv"]
+[ext_resource type="Texture2D" uid="uid://csfggllogms6g" path="res://art/Rps Card Design (15).png" id="1_o4x0g"]
+
+[resource]
+script = ExtResource("1_esruv")
+card_id = &"basic_deck"
+display_name = "basic_deck"
+front_texture = ExtResource("1_o4x0g")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

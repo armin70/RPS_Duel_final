@@ -1,0 +1,299 @@
+[gd_scene format=3 uid="uid://biotdtmbp57w4"]
+
+[ext_resource type="Script" uid="uid://x6sgwj7ebqiq" path="res://VFX/disabler/VFXElectricBallBB.gd" id="1_jxdix"]
+[ext_resource type="Shader" uid="uid://331xx6kaxnil" path="res://VFX/disabler/electric_particle.gdshader" id="2_et68k"]
+[ext_resource type="Shader" uid="uid://c0ppdhr2g4crc" path="res://VFX/disabler/glow.gdshader" id="3_n1rfj"]
+[ext_resource type="Shader" uid="uid://do65ak10edplr" path="res://VFX/disabler/four_point_star.gdshader" id="4_715q7"]
+[ext_resource type="Script" uid="uid://mmsvwoaw6tce" path="res://VFX/disabler/VFXOmniLightBB.gd" id="5_obv12"]
+[ext_resource type="AudioStream" uid="uid://c7efnls1u08to" path="res://VFX/disabler/Silence Ready.mp3" id="6_rriv7"]
+
+[sub_resource type="Gradient" id="Gradient_yxxev"]
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_no7sl"]
+noise_type = 2
+frequency = 0.005
+fractal_octaves = 1
+cellular_return_type = 6
+domain_warp_amplitude = 50.0
+domain_warp_frequency = 0.01
+domain_warp_fractal_octaves = 1
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_fgfa5"]
+noise = SubResource("FastNoiseLite_no7sl")
+color_ramp = SubResource("Gradient_yxxev")
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_a7p6y"]
+render_priority = 0
+shader = ExtResource("2_et68k")
+shader_parameter/primary_color = Color(0.9137255, 0.65882355, 1, 1)
+shader_parameter/secondary_color = Color(0, 0, 0, 1)
+shader_parameter/emission = 2.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_fgfa5")
+shader_parameter/noise_scale = Vector2(1, 1)
+shader_parameter/frequency = 1.0
+shader_parameter/amplitude = 0.3
+shader_parameter/edge_hardness = 1.0
+shader_parameter/edge_position = 0.0
+
+[sub_resource type="Curve" id="Curve_f04gn"]
+_data = [Vector2(0.2, 1), 0.0, -4.360039, 0, 0, Vector2(1, 0), -0.13151586, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_cjny4"]
+curve = SubResource("Curve_f04gn")
+
+[sub_resource type="Gradient" id="Gradient_f04gn"]
+offsets = PackedFloat32Array(0, 0.995283)
+colors = PackedColorArray(1, 1, 1, 1, 0, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_ebdrk"]
+gradient = SubResource("Gradient_f04gn")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_vnr8l"]
+particle_flag_align_y = true
+emission_shape = 2
+emission_sphere_radius = 0.8
+spread = 180.0
+radial_velocity_min = 0.09997764
+radial_velocity_max = 0.09997764
+gravity = Vector3(0, -0.02, 0)
+scale_min = 0.39999998
+scale_max = 1.4
+color_initial_ramp = SubResource("GradientTexture1D_ebdrk")
+alpha_curve = SubResource("CurveTexture_cjny4")
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_f04gn"]
+top_radius = 0.0
+bottom_radius = 0.039
+height = 0.835
+radial_segments = 8
+rings = 32
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="Curve" id="Curve_wwkf3"]
+_data = [Vector2(0, 0.12605047), 0.0, 0.23053075, 0, 0, Vector2(1, 0), -0.13151586, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_k4yhj"]
+curve = SubResource("Curve_wwkf3")
+
+[sub_resource type="Gradient" id="Gradient_fgfa5"]
+offsets = PackedFloat32Array(0, 0.995283)
+colors = PackedColorArray(1, 1, 1, 1, 0, 1, 1, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_hfq1j"]
+gradient = SubResource("Gradient_fgfa5")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_glb62"]
+particle_flag_align_y = true
+emission_shape = 2
+emission_sphere_radius = 0.8
+spread = 180.0
+radial_velocity_min = 0.09997764
+radial_velocity_max = 0.09997764
+gravity = Vector3(0, -0.02, 0)
+scale_min = 0.39999998
+scale_max = 1.4
+color_initial_ramp = SubResource("GradientTexture1D_hfq1j")
+alpha_curve = SubResource("CurveTexture_k4yhj")
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_a7p6y"]
+top_radius = 0.01
+bottom_radius = 0.01
+height = 0.1
+radial_segments = 8
+rings = 32
+cap_top = false
+cap_bottom = false
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_3sm8h"]
+render_priority = 0
+shader = ExtResource("3_n1rfj")
+shader_parameter/primary_color = Color(0.9137255, 0.65882355, 1, 1)
+shader_parameter/secondary_color = Color(0, 0, 0, 1)
+shader_parameter/emission = 2.0
+shader_parameter/exponent = 16.005
+
+[sub_resource type="Curve" id="Curve_fgfa5"]
+_data = [Vector2(0, 0.43193287), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_upvti"]
+curve = SubResource("Curve_fgfa5")
+
+[sub_resource type="Curve" id="Curve_3sm8h"]
+_data = [Vector2(0, 0), 0.0, 5.142611, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), -5.3483105, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="CurveTexture" id="CurveTexture_if6qo"]
+curve = SubResource("Curve_3sm8h")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_mjwcd"]
+gravity = Vector3(0, 0, 0)
+scale_min = 0.7
+scale_max = 1.3
+scale_curve = SubResource("CurveTexture_if6qo")
+alpha_curve = SubResource("CurveTexture_upvti")
+
+[sub_resource type="SphereMesh" id="SphereMesh_x7050"]
+radius = 0.57
+height = 5.835
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_fgfa5"]
+render_priority = 0
+shader = ExtResource("4_715q7")
+shader_parameter/primary_color = Color(0.9137255, 0.65882355, 1, 1)
+shader_parameter/secondary_color = Color(0, 0, 0, 1)
+shader_parameter/emission = 2.0
+shader_parameter/emission_mult = 1.0
+shader_parameter/star_shape = 0.18999999947844
+shader_parameter/star_smoothness = 0.20000000298024
+shader_parameter/proximity_fade = false
+shader_parameter/proximity_fade_distance = 0.5
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_3sm8h"]
+angle_min = -720.0
+angle_max = 720.0
+spread = 180.0
+initial_velocity_min = -0.01
+initial_velocity_max = 0.01
+radial_velocity_min = -0.020022351
+radial_velocity_max = 0.19997764
+gravity = Vector3(0, 0, 0)
+scale_min = 2.0
+scale_max = 4.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_mjwcd"]
+size = Vector2(0.5, 1)
+
+[sub_resource type="Animation" id="Animation_1igi5"]
+resource_name = "activate"
+length = 2.5
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Zaps:emitting")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15, 0.16666667, 0.18333334, 0.2, 0.21666667, 0.23333333, 0.25, 0.26666668, 0.28333333, 0.3, 0.31666666, 0.33333334, 0.35, 0.36666667, 0.38333333, 0.4, 0.41666666, 0.43333334, 0.45, 0.46666667, 0.48333332, 0.5, 0.51666665, 0.53333336, 0.55, 0.56666666, 0.5833333, 0.6, 0.6166667, 0.6333333, 0.65, 0.6666667, 0.68333334, 0.7, 0.71666664, 0.73333335, 0.75, 0.76666665, 0.78333336, 0.8, 0.81666666, 0.8333333, 0.85, 0.8666667, 0.8833333, 0.9, 0.9166667, 0.93333334, 0.95, 0.96666664, 0.98333335, 1, 1.0166667, 1.0333333, 1.05, 1.0666667, 1.0833334, 1.1, 1.1166667, 1.1333333, 1.15, 1.1666666, 1.1833333, 1.2, 1.2166667, 1.2333333, 1.25, 1.2666667, 1.2833333, 1.3, 1.3166667, 1.3333334, 1.35, 1.3666667, 1.3833333, 1.4, 1.4166666, 1.4333333, 1.45, 1.4666667, 1.4833333, 1.5, 1.5166667, 1.5333333, 1.55, 1.5666667, 1.5833334, 1.6, 1.6166667, 1.6333333, 1.65, 1.6666666, 1.6833333, 1.7, 1.7166667, 1.7333333, 1.75, 1.7666667, 1.7833333, 1.8, 1.8166667, 1.8333334, 1.85, 1.8666667, 1.8833333, 1.9, 1.9166666, 1.9333333, 1.95, 1.9666667, 1.9833333, 2, 2.0166667, 2.0333333, 2.05, 2.0666666, 2.0833333, 2.1, 2.1166666, 2.1333334, 2.15, 2.1666667, 2.1833334, 2.2, 2.2166667, 2.2333333, 2.25, 2.2666667, 2.2833333, 2.3, 2.3166666, 2.3333333, 2.35, 2.3666666, 2.3833334, 2.4, 2.4166667, 2.4333334, 2.45, 2.4666667, 2.4833333, 2.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 1,
+"values": [false, false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("ZapsExtra:emitting")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15, 0.16666667, 0.18333334, 0.2, 0.21666667, 0.23333333, 0.25, 0.26666668, 0.28333333, 0.3, 0.31666666, 0.33333334, 0.35, 0.36666667, 0.38333333, 0.4, 0.41666666, 0.43333334, 0.45, 0.46666667, 0.48333332, 0.5, 0.51666665, 0.53333336, 0.55, 0.56666666, 0.5833333, 0.6, 0.6166667, 0.6333333, 0.65, 0.6666667, 0.68333334, 0.7, 0.71666664, 0.73333335, 0.75, 0.76666665, 0.78333336, 0.8, 0.81666666, 0.8333333, 0.85, 0.8666667, 0.8833333, 0.9, 0.9166667, 0.93333334, 0.95, 0.96666664, 0.98333335, 1, 1.0166667, 1.0333333, 1.05, 1.0666667, 1.0833334, 1.1, 1.1166667, 1.1333333, 1.15, 1.1666666, 1.1833333, 1.2, 1.2166667, 1.2333333, 1.25, 1.2666667, 1.2833333, 1.3, 1.3166667, 1.3333334, 1.35, 1.3666667, 1.3833333, 1.4, 1.4166666, 1.4333333, 1.45, 1.4666667, 1.4833333, 1.5, 1.5166667, 1.5333333, 1.55, 1.5666667, 1.5833334, 1.6, 1.6166667, 1.6333333, 1.65, 1.6666666, 1.6833333, 1.7, 1.7166667, 1.7333333, 1.75, 1.7666667, 1.7833333, 1.8, 1.8166667, 1.8333334, 1.85, 1.8666667, 1.8833333, 1.9, 1.9166666, 1.9333333, 1.95, 1.9666667, 1.9833333, 2, 2.0166667, 2.0333333, 2.05, 2.0666666, 2.0833333, 2.1, 2.1166666, 2.1333334, 2.15, 2.1666667, 2.1833334, 2.2, 2.2166667, 2.2333333, 2.25, 2.2666667, 2.2833333, 2.3, 2.3166666, 2.3333333, 2.35, 2.3666666, 2.3833334, 2.4, 2.4166667, 2.4333334, 2.45, 2.4666667, 2.4833333, 2.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 1,
+"values": [false, false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Glow:emitting")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15, 0.16666667, 0.18333334, 0.2, 0.21666667, 0.23333333, 0.25, 0.26666668, 0.28333333, 0.3, 0.31666666, 0.33333334, 0.35, 0.36666667, 0.38333333, 0.4, 0.41666666, 0.43333334, 0.45, 0.46666667, 0.48333332, 0.5, 0.51666665, 0.53333336, 0.55, 0.56666666, 0.5833333, 0.6, 0.6166667, 0.6333333, 0.65, 0.6666667, 0.68333334, 0.7, 0.71666664, 0.73333335, 0.75, 0.76666665, 0.78333336, 0.8, 0.81666666, 0.8333333, 0.85, 0.8666667, 0.8833333, 0.9, 0.9166667, 0.93333334, 0.95, 0.96666664, 0.98333335, 1, 1.0166667, 1.0333333, 1.05, 1.0666667, 1.0833334, 1.1, 1.1166667, 1.1333333, 1.15, 1.1666666, 1.1833333, 1.2, 1.2166667, 1.2333333, 1.25, 1.2666667, 1.2833333, 1.3, 1.3166667, 1.3333334, 1.35, 1.3666667, 1.3833333, 1.4, 1.4166666, 1.4333333, 1.45, 1.4666667, 1.4833333, 1.5, 1.5166667, 1.5333333, 1.55, 1.5666667, 1.5833334, 1.6, 1.6166667, 1.6333333, 1.65, 1.6666666, 1.6833333, 1.7, 1.7166667, 1.7333333, 1.75, 1.7666667, 1.7833333, 1.8, 1.8166667, 1.8333334, 1.85, 1.8666667, 1.8833333, 1.9, 1.9166666, 1.9333333, 1.95, 1.9666667, 1.9833333, 2, 2.0166667, 2.0333333, 2.05, 2.0666666, 2.0833333, 2.1, 2.1166666, 2.1333334, 2.15, 2.1666667, 2.1833334, 2.2, 2.2166667, 2.2333333, 2.25, 2.2666667, 2.2833333, 2.3, 2.3166666, 2.3333333, 2.35, 2.3666666, 2.3833334, 2.4, 2.4166667, 2.4333334, 2.45, 2.4666667, 2.4833333, 2.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 1,
+"values": [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Star:emitting")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.016666668, 0.033333335, 0.05, 0.06666667, 0.083333336, 0.1, 0.11666667, 0.13333334, 0.15, 0.16666667, 0.18333334, 0.2, 0.21666667, 0.23333333, 0.25, 0.26666668, 0.28333333, 0.3, 0.31666666, 0.33333334, 0.35, 0.36666667, 0.38333333, 0.4, 0.41666666, 0.43333334, 0.45, 0.46666667, 0.48333332, 0.5, 0.51666665, 0.53333336, 0.55, 0.56666666, 0.5833333, 0.6, 0.6166667, 0.6333333, 0.65, 0.6666667, 0.68333334, 0.7, 0.71666664, 0.73333335, 0.75, 0.76666665, 0.78333336, 0.8, 0.81666666, 0.8333333, 0.85, 0.8666667, 0.8833333, 0.9, 0.9166667, 0.93333334, 0.95, 0.96666664, 0.98333335, 1, 1.0166667, 1.0333333, 1.05, 1.0666667, 1.0833334, 1.1, 1.1166667, 1.1333333, 1.15, 1.1666666, 1.1833333, 1.2, 1.2166667, 1.2333333, 1.25, 1.2666667, 1.2833333, 1.3, 1.3166667, 1.3333334, 1.35, 1.3666667, 1.3833333, 1.4, 1.4166666, 1.4333333, 1.45, 1.4666667, 1.4833333, 1.5, 1.5166667, 1.5333333, 1.55, 1.5666667, 1.5833334, 1.6, 1.6166667, 1.6333333, 1.65, 1.6666666, 1.6833333, 1.7, 1.7166667, 1.7333333, 1.75, 1.7666667, 1.7833333, 1.8, 1.8166667, 1.8333334, 1.85, 1.8666667, 1.8833333, 1.9, 1.9166666, 1.9333333, 1.95, 1.9666667, 1.9833333, 2, 2.0166667, 2.0333333, 2.05, 2.0666666, 2.0833333, 2.1, 2.1166666, 2.1333334, 2.15, 2.1666667, 2.1833334, 2.2, 2.2166667, 2.2333333, 2.25, 2.2666667, 2.2833333, 2.3, 2.3166666, 2.3333333, 2.35, 2.3666666, 2.3833334, 2.4, 2.4166667, 2.4333334, 2.45, 2.4666667, 2.4833333, 2.5),
+"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+"update": 1,
+"values": [false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]
+}
+tracks/4/type = "audio"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("AudioStreamPlayer3D")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = {
+"clips": [{
+"end_offset": 0.0,
+"start_offset": 0.0,
+"stream": ExtResource("6_rriv7")
+}],
+"times": PackedFloat32Array(0)
+}
+tracks/4/use_blend = true
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_0o5c3"]
+_data = {
+&"activate": SubResource("Animation_1igi5")
+}
+
+[node name="Disabler_Card" type="Node3D" unique_id=2118303313]
+transform = Transform3D(0.011283129, 0, -0.62027, 0, -0.67035544, 0, 0.30348063, 0, 0.023061052, 0, 0, 0)
+script = ExtResource("1_jxdix")
+primary_color = Color(0.9137255, 0.65882355, 1, 1)
+light_color = Color(0, 0.84313726, 1, 1)
+noise_texture = SubResource("NoiseTexture2D_fgfa5")
+
+[node name="Zaps" type="GPUParticles3D" parent="." unique_id=1846962651]
+transform = Transform3D(-1.4506563, 0, 0, 0, 0.05430299, 0, 0, 0, 0.6901547, 0, 0, 0)
+material_override = SubResource("ShaderMaterial_a7p6y")
+cast_shadow = 0
+emitting = false
+lifetime = 0.2
+explosiveness = 0.9
+fixed_fps = 60
+process_material = SubResource("ParticleProcessMaterial_vnr8l")
+draw_pass_1 = SubResource("CylinderMesh_f04gn")
+
+[node name="ZapsExtra" type="GPUParticles3D" parent="." unique_id=2063884826]
+transform = Transform3D(1.177338, 0, 0, 0, -0.28841293, 0, 0, 0, 0.4333915, 0, 0, 0)
+material_override = SubResource("ShaderMaterial_a7p6y")
+cast_shadow = 0
+emitting = false
+lifetime = 0.2
+explosiveness = 0.9
+fixed_fps = 60
+process_material = SubResource("ParticleProcessMaterial_glb62")
+draw_pass_1 = SubResource("CylinderMesh_a7p6y")
+
+[node name="Glow" type="GPUParticles3D" parent="." unique_id=678446417]
+transform = Transform3D(3.607882, 0, 0, 0, 0.56548345, 0, 0, 0, 1, 0, 0, 0)
+material_override = SubResource("ShaderMaterial_3sm8h")
+cast_shadow = 0
+emitting = false
+lifetime = 0.4
+process_material = SubResource("ParticleProcessMaterial_mjwcd")
+draw_pass_1 = SubResource("SphereMesh_x7050")
+
+[node name="Star" type="GPUParticles3D" parent="." unique_id=1466723442]
+material_override = SubResource("ShaderMaterial_fgfa5")
+emitting = false
+amount = 4
+lifetime = 0.1
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_3sm8h")
+draw_pass_1 = SubResource("QuadMesh_mjwcd")
+
+[node name="VFXOmniLightBB" type="OmniLight3D" parent="." unique_id=65471043]
+light_color = Color(0, 0.84313726, 1, 1)
+light_energy = 5.0
+light_indirect_energy = 0.0
+light_volumetric_fog_energy = 0.0
+script = ExtResource("5_obv12")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=438158334]
+libraries/ = SubResource("AnimationLibrary_0o5c3")
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="." unique_id=1943363143]

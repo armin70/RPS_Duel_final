@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cuoimo4q0texf"]
+
+[ext_resource type="Texture2D" uid="uid://i8r8b32t0ch3" path="res://art/Rps Card Design (14).png" id="1_dc2j1"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_vx78k"]
+
+[resource]
+script = ExtResource("1_vx78k")
+card_id = &"abjiz_deck"
+display_name = "abjiz_deck"
+front_texture = ExtResource("1_dc2j1")
+metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

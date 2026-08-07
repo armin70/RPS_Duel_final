@@ -1,0 +1,127 @@
+[gd_scene format=3 uid="uid://bp0rt6eijxbi1"]
+
+[ext_resource type="Script" uid="uid://bl02o8p44ghe1" path="res://ui/main_menu/main_menu_transparent.gd" id="1_script"]
+[ext_resource type="VideoStream" uid="uid://brg13y2qlpu" path="res://ui/main_menu/idle_color.ogv" id="2_idle_color"]
+[ext_resource type="VideoStream" uid="uid://dxbrecxrnh8cb" path="res://ui/main_menu/idle_alpha.ogv" id="3_idle_alpha"]
+[ext_resource type="VideoStream" uid="uid://v65fckurxiwq" path="res://ui/main_menu/start_color.ogv" id="4_start_color"]
+[ext_resource type="VideoStream" uid="uid://caljy6mbsnfmw" path="res://ui/main_menu/start_alpha.ogv" id="5_start_alpha"]
+[ext_resource type="Shader" uid="uid://ci80kcdjfymhl" path="res://ui/main_menu/transparent_video_composite.gdshader" id="6_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_video"]
+shader = ExtResource("6_shader")
+shader_parameter/alpha_gamma = 1.0
+shader_parameter/alpha_multiplier = 1.0
+
+[node name="MainMenu" type="CanvasLayer" unique_id=480882812]
+layer = 100
+script = ExtResource("1_script")
+idle_color_video = ExtResource("2_idle_color")
+idle_alpha_video = ExtResource("3_idle_alpha")
+start_color_video = ExtResource("4_start_color")
+start_alpha_video = ExtResource("5_start_alpha")
+
+[node name="MenuRoot" type="Control" parent="." unique_id=530164042]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ColorPlayer" type="VideoStreamPlayer" parent="MenuRoot" unique_id=1151379756]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand = true
+
+[node name="AlphaPlayer" type="VideoStreamPlayer" parent="MenuRoot" unique_id=1428346168]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand = true
+
+[node name="Composite" type="ColorRect" parent="MenuRoot" unique_id=1869223426]
+material = SubResource("ShaderMaterial_video")
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="StartButton" type="Button" parent="MenuRoot" unique_id=873099335]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.325
+anchor_top = 0.215
+anchor_right = 0.535
+anchor_bottom = 0.56
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="ModeButtons" type="Control" parent="MenuRoot" unique_id=1255517034]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="SinglePlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=110001582]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.285
+anchor_top = 0.32
+anchor_right = 0.43
+anchor_bottom = 0.47
+offset_left = 205.79999
+offset_top = 100.399994
+offset_right = 205.79999
+offset_bottom = 100.399994
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TwoPlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=1437106841]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.43
+anchor_top = 0.32
+anchor_right = 0.555
+anchor_bottom = 0.47
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="HardcoreButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=883718107]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.9
+anchor_top = 0.86
+anchor_right = 0.985
+anchor_bottom = 0.985
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true

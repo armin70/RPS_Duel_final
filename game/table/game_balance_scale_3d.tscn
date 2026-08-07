@@ -1,0 +1,45 @@
+[gd_scene format=3 uid="uid://doelnx2jhw4b2"]
+
+[ext_resource type="Script" uid="uid://ddjqolqithcll" path="res://game/table/game_balance_scale_3d.gd" id="1_7tasd"]
+[ext_resource type="PackedScene" uid="uid://dbg56i67iho1s" path="res://art/Scale_Beam.glb" id="2_w3dlm"]
+[ext_resource type="PackedScene" uid="uid://cy37v27xm5vw5" path="res://art/P2plate (1).glb" id="3_7no5m"]
+[ext_resource type="PackedScene" uid="uid://b5j0q74q1v1ac" path="res://art/P1plate (1).glb" id="4_u5ta3"]
+[ext_resource type="PackedScene" uid="uid://o17602ehnbd3" path="res://art/LadyJustice.glb" id="5_7no5m"]
+
+[node name="GameBalanceScale3d" type="Node3D" unique_id=1049004180 node_paths=PackedStringArray("beam_pivot")]
+script = ExtResource("1_7tasd")
+beam_pivot = NodePath("BeamPivot")
+max_tilt_degrees = 15.0
+
+[node name="BeamPivot" type="Node3D" parent="." unique_id=1962490364]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.1915772, 1.0049932, -0.43006045)
+
+[node name="BeamMesh" parent="BeamPivot" unique_id=1233130587 instance=ExtResource("2_w3dlm")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.71548945, 0)
+
+[node name="LeftRemote" type="RemoteTransform3D" parent="BeamPivot" unique_id=73595751]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.52386475, 0.012725353, -0.045888275)
+remote_path = NodePath("../../LeftPanHolder")
+update_rotation = false
+update_scale = false
+
+[node name="RightRemote" type="RemoteTransform3D" parent="BeamPivot" unique_id=1811140559]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5296625, 0.01392746, -0.022699326)
+remote_path = NodePath("../../RightPanHolder")
+update_rotation = false
+update_scale = false
+
+[node name="RightPanHolder" type="Node3D" parent="." unique_id=128491393]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7212397, 1.0189207, -0.45275977)
+
+[node name="RightPan" parent="RightPanHolder" unique_id=868040892 instance=ExtResource("3_7no5m")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.46898413, -0.7763516, 0.014473915)
+
+[node name="LeftPanHolder" type="Node3D" parent="." unique_id=370407627]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.33228755, 1.0177186, -0.47594872)
+
+[node name="LeftPan" parent="LeftPanHolder" unique_id=1580291632 instance=ExtResource("4_u5ta3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.46021482, -0.7903354, 0.05059582)
+
+[node name="LadyJustice2" parent="." unique_id=2057495227 instance=ExtResource("5_7no5m")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.20864376, 0, -0.2726121)

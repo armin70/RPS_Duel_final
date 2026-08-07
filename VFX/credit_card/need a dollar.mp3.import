@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://co8k8mpp58fg2"
+path="res://.godot/imported/need a dollar.mp3-8d7770bc18bae26ed3831acbd0469c6c.mp3str"
+
+[deps]
+
+source_file="res://VFX/credit_card/need a dollar.mp3"
+dest_files=["res://.godot/imported/need a dollar.mp3-8d7770bc18bae26ed3831acbd0469c6c.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

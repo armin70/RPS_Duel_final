@@ -1,0 +1,223 @@
+[gd_scene format=3 uid="uid://dklk3d2njec5"]
+
+[ext_resource type="Script" uid="uid://d2dybtb4qsy1r" path="res://core/cards/card_3d.gd" id="1_hee7s"]
+[ext_resource type="Texture2D" uid="uid://cqpyeahmtmn43" path="res://art/Rps Card Design (11).png" id="2_bml1i"]
+[ext_resource type="PackedScene" uid="uid://biotdtmbp57w4" path="res://VFX/disabler/disabler_card.tscn" id="3_5l2i7"]
+[ext_resource type="PackedScene" uid="uid://b5ta485812nk2" path="res://VFX/bomb/explotion.tscn" id="3_7agny"]
+[ext_resource type="Texture2D" uid="uid://cqouov0wam3j3" path="res://art/cards/16.png" id="3_mdc8w"]
+[ext_resource type="PackedScene" uid="uid://coqtr13ffe5ki" path="res://VFX/killer/killer_paper.tscn" id="3_xb2k8"]
+[ext_resource type="PackedScene" uid="uid://cbp4d8w83a5jx" path="res://VFX/killer/killer_rock.tscn" id="4_7agny"]
+[ext_resource type="PackedScene" uid="uid://lbfxclac0n3b" path="res://VFX/disabler/disabling_lightning.tscn" id="4_8468h"]
+[ext_resource type="PackedScene" uid="uid://qaa3a1sjmhy2" path="res://VFX/killer/killer_scissor.tscn" id="5_6k64n"]
+[ext_resource type="PackedScene" uid="uid://cdxkc5ss8cdl4" path="res://VFX/collector/collector_scissor.tscn" id="6_tkf3v"]
+[ext_resource type="PackedScene" uid="uid://6aavne18lb45" path="res://VFX/collector/collector_rock.tscn" id="7_0sw5f"]
+[ext_resource type="PackedScene" uid="uid://13al0gdoklio" path="res://VFX/collector/collector_paper.tscn" id="8_n3u6i"]
+
+[sub_resource type="AudioStreamPolyphonic" id="AudioStreamPolyphonic_7agny"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_fuxww"]
+size = Vector3(0.3, 0.01, 0.449)
+
+[sub_resource type="QuadMesh" id="QuadMesh_hee7s"]
+size = Vector2(0.3, 0.44)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hee7s"]
+size = Vector3(0.32, 0.07, 0.52)
+
+[sub_resource type="QuadMesh" id="QuadMesh_bml1i"]
+size = Vector2(1.5, 2.1)
+
+[sub_resource type="Shader" id="Shader_g0bg8"]
+code = "shader_type spatial;
+render_mode unshaded, cull_disabled, blend_add;
+
+uniform float effect_decay : hint_range(0.0, 1.0, 0.01) = 0.0;
+
+group_uniforms Color;
+uniform vec3 primary_color : source_color;
+uniform vec3 secondary_color : source_color;
+uniform vec3 tertiary_color : source_color;
+uniform float emission = 1.0;
+
+group_uniforms Noise;
+uniform sampler2D noise_texture;
+uniform vec2 noise_scale = vec2(1.0);
+uniform vec2 noise_scroll = vec2(-0.2, 0.4);
+uniform float noise_twist = 1.0;
+uniform float noise_shape = 1.0;
+
+group_uniforms Transparency;
+uniform float edge_position : hint_range(0.0, 1.0, 0.01) = 0.0;
+uniform float edge_hardness : hint_range(0.0, 1.0, 0.01) = 0.0;
+uniform float proximity_fade_distance : hint_range(0.0, 8.0, 0.01) = 2.0;
+uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
+
+group_uniforms Rotation;
+uniform float rotation_frequency : hint_range(0.0, 1.0, 0.01) = 1.0;
+uniform float rotation_amount : hint_range(0.0, 1.0, 0.01) = 0.0;
+
+vec2 rotate(vec2 pos, float angle)
+{
+	mat2 rotation = mat2(vec2(sin(angle), -cos(angle)),
+						vec2(cos(angle), sin(angle)));
+	
+	pos = pos * rotation;
+	return pos;
+}
+
+void vertex() {
+	float angle_z = sin(TIME * rotation_frequency);
+	float angle_x = cos(TIME * rotation_frequency * 1.5);
+	
+	VERTEX.xy = rotate(VERTEX.xy, angle_z * rotation_amount + (PI/2.0));
+	VERTEX.zy = rotate(VERTEX.zy, angle_x * rotation_amount + (PI/2.0));
+}
+
+void fragment() {
+	float mask = smoothstep(0.0, 0.6, abs(UV.y * 2.0 - 1.0));
+	
+	vec2 noise_uv = UV * noise_scale;
+	noise_uv += noise_scroll * TIME;
+	noise_uv.x = noise_uv.x + noise_uv.y * noise_twist;
+	float noise = texture(noise_texture, noise_uv * 2.0).r;
+	
+	float value = noise - mask;
+	
+	
+	value = smoothstep(0.0, 0.8, value);
+	value = max(value - edge_position, 0.0);
+	
+	vec3 color = mix(secondary_color, primary_color, value);
+	color = FRONT_FACING ? color : mix(tertiary_color, secondary_color, value);
+	
+	ALBEDO = color * emission;
+	
+	float alpha = clamp(value / (1.0 - edge_hardness), 0.0, 1.0);
+	alpha = max(alpha - effect_decay, 0.0);
+	
+	// Proximity Fade: Enabled
+	float proximity_depth_tex = textureLod(depth_texture, SCREEN_UV, 0.0).r;
+	vec4 ndc = OUTPUT_IS_SRGB ? vec4(vec3(SCREEN_UV, proximity_depth_tex) * 2.0 - 1.0, 1.0) : vec4(SCREEN_UV * 2.0 - 1.0, proximity_depth_tex, 1.0);
+	vec4 proximity_view_pos = INV_PROJECTION_MATRIX * ndc;
+	proximity_view_pos.xyz /= proximity_view_pos.w;
+	alpha *= clamp(1.0 - smoothstep(proximity_view_pos.z + proximity_fade_distance, proximity_view_pos.z, VERTEX.z), 0.0, 1.0);
+	
+	ALPHA = alpha;
+}"
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_5l2i7"]
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_vnr8l"]
+generate_mipmaps = false
+noise = SubResource("FastNoiseLite_5l2i7")
+seamless = true
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_8468h"]
+render_priority = 0
+shader = SubResource("Shader_g0bg8")
+shader_parameter/effect_decay = 0.72999998368304
+shader_parameter/primary_color = Color(0, 0, 0, 1)
+shader_parameter/secondary_color = Color(0.4392157, 0.48235294, 0.46666667, 1)
+shader_parameter/tertiary_color = Color(0, 0, 0, 1)
+shader_parameter/emission = 1.0
+shader_parameter/noise_texture = SubResource("NoiseTexture2D_vnr8l")
+shader_parameter/noise_scale = Vector2(1, 1)
+shader_parameter/noise_scroll = Vector2(-0.2, 0.4)
+shader_parameter/noise_twist = -0.685
+shader_parameter/noise_shape = 2.625
+shader_parameter/edge_position = 0.0
+shader_parameter/edge_hardness = 0.0
+shader_parameter/proximity_fade_distance = 0.0999999977648
+shader_parameter/rotation_frequency = 0.0
+shader_parameter/rotation_amount = 0.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ht6xj"]
+transparency = 1
+blend_mode = 3
+albedo_color = Color(0.3309365, 0.3309365, 0.3309365, 0.654902)
+
+[sub_resource type="BoxMesh" id="BoxMesh_tkf3v"]
+size = Vector3(0.3, 0.03, 0.449)
+
+[node name="card_3d" type="Area3D" unique_id=162614256]
+collision_mask = 0
+script = ExtResource("1_hee7s")
+back_texture = ExtResource("2_bml1i")
+
+[node name="BombPlacedVFX" parent="." unique_id=68154778 instance=ExtResource("3_7agny")]
+
+[node name="KillerPaperPlacedVFX" parent="." unique_id=1412286906 instance=ExtResource("3_xb2k8")]
+
+[node name="KillerRockPlacedVFX" parent="." unique_id=1823060849 instance=ExtResource("4_7agny")]
+
+[node name="AudioStreamPlayer3D" parent="KillerRockPlacedVFX" index="7" unique_id=1442224539]
+stream = SubResource("AudioStreamPolyphonic_7agny")
+
+[node name="KillerScissorsPlacedVFX" parent="." unique_id=80870831 instance=ExtResource("5_6k64n")]
+
+[node name="DisablerActivateVFX" parent="." unique_id=2118303313 instance=ExtResource("3_5l2i7")]
+primary_color = Color(0, 0, 0, 1)
+noise_texture = null
+
+[node name="DisabledHitVFX" parent="." unique_id=1390780707 instance=ExtResource("4_8468h")]
+
+[node name="CardBody" type="MeshInstance3D" parent="." unique_id=2030787405]
+mesh = SubResource("BoxMesh_fuxww")
+
+[node name="CardArt" type="MeshInstance3D" parent="." unique_id=1330747358]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.007, 0)
+mesh = SubResource("QuadMesh_hee7s")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=709102180]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.015817959, 0)
+shape = SubResource("BoxShape3D_hee7s")
+
+[node name="CardName" type="Label3D" parent="." unique_id=2065700296]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0.08, 0)
+visible = false
+
+[node name="DisabledOverlay" type="MeshInstance3D" parent="." unique_id=931473029]
+transform = Transform3D(1, 0, 0, 0, 1.1924881e-08, 1, 0, -1, 1.1924881e-08, 0, 0.2, 0)
+visible = false
+mesh = SubResource("QuadMesh_bml1i")
+
+[node name="DisabledLabel" type="Label3D" parent="." unique_id=2041056964]
+transform = Transform3D(1, 0, 0, 0, 1.1924881e-08, 1, 0, -1, 1.1924881e-08, 0, 0.1, 0)
+visible = false
+text = "DISABLED"
+font_size = 10
+
+[node name="ShieldBadge" type="Node3D" parent="." unique_id=1376067777]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.29342198, 0.1, -0.69304985)
+visible = false
+
+[node name="Sprite3D" type="Sprite3D" parent="ShieldBadge" unique_id=1190501965]
+unique_name_in_owner = true
+transform = Transform3D(0.02, 0, 0, 0, -8.7422775e-10, 0.02, 0, -0.02, -8.7422775e-10, -0.310722, -0.08731585, 0.7306107)
+texture = ExtResource("3_mdc8w")
+
+[node name="ShieldCount" type="Label3D" parent="ShieldBadge" unique_id=913721196]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, -0.25479344, -0.089089245, 0.73500514)
+text = "0
+"
+font_size = 12
+
+[node name="Disabled_card" type="MeshInstance3D" parent="." unique_id=2045150102]
+visible = false
+material_override = SubResource("ShaderMaterial_8468h")
+material_overlay = SubResource("StandardMaterial3D_ht6xj")
+mesh = SubResource("BoxMesh_tkf3v")
+
+[node name="ScissorsCollectorVFX" parent="." unique_id=1807860923 instance=ExtResource("6_tkf3v")]
+
+[node name="RockCollectorVFX" parent="." unique_id=444144919 instance=ExtResource("7_0sw5f")]
+
+[node name="PaperCollectorVFX" parent="." unique_id=871175802 instance=ExtResource("8_n3u6i")]
+
+[editable path="BombPlacedVFX"]
+[editable path="KillerRockPlacedVFX"]
+[editable path="DisablerActivateVFX"]
+[editable path="DisabledHitVFX"]

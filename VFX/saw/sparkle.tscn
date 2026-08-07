@@ -1,0 +1,53 @@
+[gd_scene format=3 uid="uid://mo3vjdl8weau"]
+
+[ext_resource type="Texture2D" uid="uid://dtp2q43jribsx" path="res://VFX/saw/texture.png" id="1_5kv8c"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mbo4x"]
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+albedo_color = Color(18.892157, 7.8171997, 0, 1)
+albedo_texture = ExtResource("1_5kv8c")
+grow = true
+
+[sub_resource type="Curve" id="Curve_rcy8r"]
+_data = [Vector2(0, 0.15178573), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Curve" id="Curve_uxcpn"]
+_limits = [0.0, 3.5, 0.0, 1.0]
+_data = [Vector2(0.23655912, 1.28125), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Curve" id="Curve_8ulk7"]
+_data = [Vector2(0.037634403, 0.25), 0.0, 0.0, 0, 0, Vector2(1, 0.21428573), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveXYZTexture" id="CurveXYZTexture_kx3hh"]
+curve_x = SubResource("Curve_rcy8r")
+curve_y = SubResource("Curve_uxcpn")
+curve_z = SubResource("Curve_8ulk7")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_mqphx"]
+particle_flag_align_y = true
+spread = 15.0
+initial_velocity_min = 5.0
+initial_velocity_max = 10.0
+gravity = Vector3(6.255, 9, 0)
+scale_min = 0.0
+scale_max = 0.14999999
+scale_curve = SubResource("CurveXYZTexture_kx3hh")
+color = Color(1.2108967, 0.53095216, 0, 1)
+
+[sub_resource type="QuadMesh" id="QuadMesh_xi3lg"]
+
+[node name="Sparkle" type="GPUParticles3D" unique_id=1431821442]
+transform = Transform3D(0.317965, 0, 0, 0, -2.7841653e-08, -0.63694286, 0, 1, -4.3711367e-08, 0, 0, 0)
+material_override = SubResource("StandardMaterial3D_mbo4x")
+emitting = false
+amount = 200
+speed_scale = 0.65
+process_material = SubResource("ParticleProcessMaterial_mqphx")
+draw_pass_1 = SubResource("QuadMesh_xi3lg")
