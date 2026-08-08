@@ -13,7 +13,8 @@ enum MenuPhase {
 	MODE_SELECTION
 }
 
-
+@export_category("Help Video")
+@export var help_video: VideoStream
 @export_category("Game Intro Sequence")
 
 @export var cloud_controller: CloudMenuController
@@ -38,7 +39,11 @@ enum MenuPhase {
 @export_range(0.01, 0.25, 0.01)
 var maximum_sync_drift: float = 0.06
 
+@onready var help_button: Button = \
+	$MenuRoot/HelpButton
 
+@onready var help_video_player: VideoStreamPlayer = \
+	$MenuRoot/HelpVideoPlayer
 @onready var menu_root: Control = $MenuRoot
 
 @onready var color_player: VideoStreamPlayer = \
@@ -120,7 +125,41 @@ func _ready() -> void:
 		idle_alpha_video,
 		MenuPhase.IDLE
 	)
+func _on_help_button_pressed() -> void:
+	if help_video == null:
+		push_error("Help Video is not assigned.")
+		return
 
+	# UI منو مخفی می‌شود.
+	start_button.hide()
+	mode_buttons.hide()
+	help_button.hide()
+
+	# ویدیو یک بار از اول اجرا می‌شود.
+	help_video_player.stream = help_video
+	help_video_player.loop = false
+	help_video_player.show()
+	help_video_player.play()
+
+
+func _on_help_video_finished() -> void:
+	help_video_player.stop()
+	help_video_player.hide()
+
+	# برگرد به صفحه اول منو.
+	phase = MenuPhase.IDLE
+	transition_is_running = false
+
+	start_button.show()
+	mode_buttons.hide()
+	help_button.show()
+
+	# ویدیوی Idle منو دوباره از اول اجرا شود.
+	await _play_video_pair(
+		idle_color_video,
+		idle_alpha_video,
+		MenuPhase.IDLE
+	)
 
 func _exit_tree() -> void:
 	# در صورت حذف منو، بازی Pause باقی نماند.
@@ -285,15 +324,19 @@ func _start_game_sequence() -> void:
 	# ابرها و دوربین باید امکان اجرا داشته باشند.
 	if pause_game_while_menu:
 		get_tree().paused = false
-
 	# -----------------------------------------
 	# مرحله اول:
-	# ابرها مستقیماً از ثانیه 8 تا 9 می‌روند.
+	# ابرها از ثانیه 8 تا 9 می‌روند.
 	# -----------------------------------------
 	if is_instance_valid(cloud_controller):
 		cloud_controller.play_cloud_outro()
 
 		await cloud_controller.clouds_outro_finished
+		cloud_controller.queue_free()
+		
+		cloud_controller = null
+
+		print("MENU CLOUDS REMOVED")
 	else:
 		push_warning(
 			"CloudController is not assigned."
@@ -301,15 +344,15 @@ func _start_game_sequence() -> void:
 
 	# -----------------------------------------
 	# مرحله دوم:
-	# بعد از خروج کامل ابرها، دوربین جلو می‌رود.
+	# حالا دوربین جلو می‌رود.
 	# -----------------------------------------
 	if is_instance_valid(intro_camera):
 		await intro_camera.move_to_game_position()
+		# ابرها دیگر در بازی استفاده نمی‌شوند.
 	else:
 		push_warning(
 			"IntroCameraController is not assigned."
 		)
-
 	# -----------------------------------------
 	# مرحله سوم:
 	# بعد از رسیدن دوربین، سه کارت Deck ظاهر می‌شوند.

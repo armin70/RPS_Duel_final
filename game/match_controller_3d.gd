@@ -34,13 +34,13 @@ var mustache_vfx_lifetime: float = 5.0
 @export var deck_three_preview_card: CardDefinition
 
 @export_range(1.0, 6.0, 0.1)
-var deck_choice_distance: float = 2.6
+var deck_choice_distance: float = 3.5
 
 @export_range(0.4, 2.0, 0.05)
-var deck_choice_spacing: float = 0.90
+var deck_choice_spacing: float = 0.80
 
 @export_range(0.5, 4.0, 0.1)
-var deck_choice_scale: float = 2.2
+var deck_choice_scale: float = 1.7
 
 @export_range(-2.0, 2.0, 0.05)
 var deck_choice_vertical_offset: float = 0.0

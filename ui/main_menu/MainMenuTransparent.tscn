@@ -125,3 +125,13 @@ grow_vertical = 2
 focus_mode = 0
 mouse_default_cursor_shape = 2
 flat = true
+
+[node name="HelpButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=219209116]
+layout_mode = 0
+offset_right = 8.0
+offset_bottom = 8.0
+
+[node name="HelpVideoPlayer" type="VideoStreamPlayer" parent="MenuRoot/ModeButtons" unique_id=712810018]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
