@@ -25,10 +25,10 @@ color_ramp = SubResource("Gradient_yxxev")
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_a7p6y"]
 render_priority = 0
 shader = ExtResource("2_et68k")
-shader_parameter/primary_color = Color(0.9137255, 0.65882355, 1, 1)
+shader_parameter/primary_color = Color(0, 0, 0, 1)
 shader_parameter/secondary_color = Color(0, 0, 0, 1)
 shader_parameter/emission = 2.0
-shader_parameter/noise_texture = SubResource("NoiseTexture2D_fgfa5")
+shader_parameter/noise_texture = null
 shader_parameter/noise_scale = Vector2(1, 1)
 shader_parameter/frequency = 1.0
 shader_parameter/amplitude = 0.3

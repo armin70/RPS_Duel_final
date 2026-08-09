@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_japea"]
 [ext_resource type="Script" uid="uid://dyb7karb56da6" path="res://core/cards/behaviors/mustache_rock_behavior.gd" id="1_x32sk"]
 [ext_resource type="Texture2D" uid="uid://b655krr77wg8u" path="res://art/cards/10.png" id="2_x32sk"]
+[ext_resource type="Resource" path="res://data/vfx/mustache_dealer_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_nqwud"]
 script = ExtResource("1_x32sk")
@@ -14,5 +15,6 @@ card_id = &"mustache_rock"
 display_name = "Mustache Rock"
 mana_cost = 4
 front_texture = ExtResource("2_x32sk")
+ability_vfx = ExtResource("99_vfx1")
 behavior = SubResource("Resource_nqwud")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

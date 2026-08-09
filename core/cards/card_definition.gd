@@ -23,6 +23,19 @@ var mana_cost: int = 1
 @export_category("Visual")
 @export var front_texture: Texture2D
 
+
+@export_category("VFX")
+
+# Played when the card itself is placed/revealed.
+@export var placed_vfx: CardVFXDefinition
+
+# Played on cards affected by this card (for example Disabler hits).
+@export var target_vfx: CardVFXDefinition
+
+# Played when the card ability resolves later (Collector, Chainsaw, Mustache).
+@export var ability_vfx: CardVFXDefinition
+
+
 @export_category("Special Behavior")
 @export var behavior: CardBehavior
 

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3]
+
+[ext_resource type="Script" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
+[ext_resource type="PackedScene" path="res://VFX/saw/saw(dirt).tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_vfx")
+scene = ExtResource("2_scene")
+spawn_target = 2
+animation_name = &"move"
+restart_descendant_particles = true
+completion_padding = 0.75
+cleanup_delay = 0.1

@@ -4,6 +4,8 @@
 [ext_resource type="Texture2D" uid="uid://c1vwnrgame2hn" path="res://art/cards/8.png" id="2_wje6b"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_yuiqf"]
 
+[ext_resource type="Resource" path="res://data/vfx/chainsaw_dealer_vfx.tres" id="99_vfx1"]
+
 [sub_resource type="Resource" id="Resource_yuiqf"]
 script = ExtResource("1_wje6b")
 metadata/_custom_type_script = "uid://dknd8m8l1cjno"
@@ -15,5 +17,6 @@ display_name = "chainsaw"
 gesture = 2
 mana_cost = 2
 front_texture = ExtResource("2_wje6b")
+ability_vfx = ExtResource("99_vfx1")
 behavior = SubResource("Resource_yuiqf")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

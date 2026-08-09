@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_wckn4"]
 [ext_resource type="Script" uid="uid://x34p7rpd0swt" path="res://core/cards/behaviors/collector_behavior.gd" id="1_xxbps"]
 [ext_resource type="Texture2D" uid="uid://ddubid7tqqrxt" path="res://art/cards/20.png" id="2_xxbps"]
+[ext_resource type="Resource" path="res://data/vfx/collector_rock_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_xxbps"]
 script = ExtResource("1_xxbps")
@@ -14,5 +15,6 @@ card_id = &"collector_rock"
 display_name = "Rock Collector"
 mana_cost = 3
 front_texture = ExtResource("2_xxbps")
+ability_vfx = ExtResource("99_vfx1")
 behavior = SubResource("Resource_xxbps")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

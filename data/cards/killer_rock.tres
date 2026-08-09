@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://bs2blrv41ci6b" path="res://core/cards/behaviors/killer_behavior.gd" id="1_pd2ul"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_s6sm3"]
 
+[ext_resource type="Resource" path="res://data/vfx/killer_rock_placed_vfx.tres" id="99_vfx1"]
+
 [sub_resource type="Resource" id="Resource_aihvp"]
 script = ExtResource("1_pd2ul")
 metadata/_custom_type_script = "uid://bs2blrv41ci6b"
@@ -14,5 +16,6 @@ card_id = &"killer_rock"
 display_name = "killer rock"
 mana_cost = 2
 front_texture = ExtResource("1_06yee")
+placed_vfx = ExtResource("99_vfx1")
 behavior = SubResource("Resource_aihvp")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

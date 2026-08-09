@@ -1,23 +1,27 @@
 class_name MatchController3D
 extends Node3D
-@export var saw_vfx_spawn: Node3D
-@export var saw_sound_volume_db: float = 0.0
+
+
 const SLOT_COLLISION_MASK: int = 2
 
 
+@export_category("VFX")
 
+@export var vfx_manager: CardVFXManager3D
+
+# Kept temporarily so the current binary main_game.scn can still deserialize
+# its old inspector fields safely. The new VFX system does not use them.
+@export_category("Legacy VFX References")
+@export var saw_vfx_spawn: Node3D
+@export var mustache_vfx_spawn: Node3D
+@export var MUSTACHE_VFX_SCENE: PackedScene
+@export var SAW_DIRT_SCENE: PackedScene
+@export var saw_sound_volume_db: float = 0.0
+@export var mustache_vfx_lifetime: float = 5.0
+
+@export_category("VFX Timing")
 @export_range(0.0, 1.0, 0.01)
 var collector_pull_delay: float = 0.20
-@export_category("Mustache VFX")
-
-@export var MUSTACHE_VFX_SCENE: PackedScene
-
-@export var mustache_vfx_spawn: Node3D
-
-@export_range(0.5, 10.0, 0.1)
-var mustache_vfx_lifetime: float = 5.0
-@export_category("VFX")
-@export var SAW_DIRT_SCENE: PackedScene
 @export_category("Match Resources")
 @export var rules: MatchRules
 @export var player_one_deck: DeckDefinition
@@ -34,13 +38,13 @@ var mustache_vfx_lifetime: float = 5.0
 @export var deck_three_preview_card: CardDefinition
 
 @export_range(1.0, 6.0, 0.1)
-var deck_choice_distance: float = 3.5
+var deck_choice_distance: float = 2.6
 
 @export_range(0.4, 2.0, 0.05)
-var deck_choice_spacing: float = 0.80
+var deck_choice_spacing: float = 0.45
 
 @export_range(0.5, 4.0, 0.1)
-var deck_choice_scale: float = 1.7
+var deck_choice_scale: float = 1
 
 @export_range(-2.0, 2.0, 0.05)
 var deck_choice_vertical_offset: float = 0.0
@@ -99,6 +103,9 @@ func _ready() -> void:
 	# The transparent menu finds this controller through the group.
 	add_to_group(&"match_controller")
 
+	_ensure_vfx_manager()
+	_remove_legacy_resident_vfx()
+
 	if not _resources_are_valid():
 		return
 
@@ -116,7 +123,108 @@ func _ready() -> void:
 	print("Waiting for player deck selection.")
 
 
-# Called by main_menu_transparent.gd after Single Player or Hardcore.
+func _ensure_vfx_manager() -> void:
+	if is_instance_valid(vfx_manager):
+		return
+
+	var scene_root := get_parent() as Node3D
+
+	if scene_root == null:
+		push_error(
+			"MatchController3D needs a Node3D parent for RuntimeVFX."
+		)
+		return
+
+	var runtime_root := scene_root.get_node_or_null(
+		"RuntimeVFX"
+	) as Node3D
+
+	if runtime_root == null:
+		runtime_root = Node3D.new()
+		runtime_root.name = "RuntimeVFX"
+		scene_root.add_child(runtime_root)
+
+	var anchors := scene_root.get_node_or_null(
+		"VFXAnchors"
+	) as Node3D
+
+	if anchors == null:
+		anchors = Node3D.new()
+		anchors.name = "VFXAnchors"
+		scene_root.add_child(anchors)
+
+	var dealer_anchor := anchors.get_node_or_null(
+		"DealerVFXAnchor"
+	) as Node3D
+
+	if dealer_anchor == null:
+		dealer_anchor = Node3D.new()
+		dealer_anchor.name = "DealerVFXAnchor"
+		anchors.add_child(dealer_anchor)
+
+	var board_anchor := anchors.get_node_or_null(
+		"BoardVFXAnchor"
+	) as Node3D
+
+	if board_anchor == null:
+		board_anchor = Node3D.new()
+		board_anchor.name = "BoardVFXAnchor"
+		anchors.add_child(board_anchor)
+
+	vfx_manager = CardVFXManager3D.new()
+	vfx_manager.name = "CardVFXManager3D"
+	scene_root.add_child(vfx_manager)
+
+	vfx_manager.runtime_root = runtime_root
+	vfx_manager.dealer_anchor = dealer_anchor
+	vfx_manager.board_anchor = board_anchor
+
+	print("Runtime VFX manager created.")
+
+
+func _remove_legacy_resident_vfx() -> void:
+	# The active project scene is saved as binary, so old dealer VFX/markers
+	# may still be serialized there. Remove them immediately at runtime.
+	var legacy_nodes: Array[Node] = []
+
+	if is_instance_valid(saw_vfx_spawn):
+		legacy_nodes.append(saw_vfx_spawn)
+
+	if (
+		is_instance_valid(mustache_vfx_spawn)
+		and not legacy_nodes.has(mustache_vfx_spawn)
+	):
+		legacy_nodes.append(mustache_vfx_spawn)
+
+	var scene_root: Node = get_parent()
+
+	if scene_root != null:
+		for legacy_name: String in [
+			"SawVFXSpawn",
+			"sibilVFXSpawn"
+		]:
+			var legacy_node: Node = scene_root.find_child(
+				legacy_name,
+				true,
+				false
+			)
+
+			if (
+				is_instance_valid(legacy_node)
+				and not legacy_nodes.has(legacy_node)
+			):
+				legacy_nodes.append(legacy_node)
+
+	for legacy_node: Node in legacy_nodes:
+		if is_instance_valid(legacy_node):
+			legacy_node.queue_free()
+
+	saw_vfx_spawn = null
+	mustache_vfx_spawn = null
+	MUSTACHE_VFX_SCENE = null
+	SAW_DIRT_SCENE = null
+
+
 func begin_deck_selection() -> void:
 	if deck_selection_active:
 		return
@@ -715,11 +823,14 @@ func _reveal_bot_card(
 		card.instance_id
 	] = card_view
 
-	card_view.play_killer_placed_effect()
-	card_view.play_bomb_placed_effect()
+	var placed_vfx_duration: float = \
+		_play_card_placed_vfx(
+			card_view
+		)
 
 	await _play_card_placement_disable_sequence(
-		card_view
+		card_view,
+		placed_vfx_duration
 	)
 
 func _find_card_slot(
@@ -1316,11 +1427,14 @@ func _finish_card_drag(
 			place.card_anchor.global_transform
 		)
 
-		card_view.play_killer_placed_effect()
-		card_view.play_bomb_placed_effect()
+		var placed_vfx_duration: float = \
+			_play_card_placed_vfx(
+				card_view
+			)
 
 		await _play_card_placement_disable_sequence(
-			card_view
+			card_view,
+			placed_vfx_duration
 		)
 
 		hud.refresh(
@@ -1468,6 +1582,10 @@ func _resources_are_valid() -> bool:
 		push_error("RuntimeCards is missing.")
 		return false
 
+	if vfx_manager == null:
+		push_error("CardVFXManager3D is missing.")
+		return false
+
 	if camera_3d == null:
 		push_error("Camera3D is missing.")
 		return false
@@ -1563,19 +1681,17 @@ func _refresh_board_disabled_visuals(
 	var longest_hit_duration: float = 0.0
 
 	for player_id: int in [1, 2]:
-		var player: PlayerState = \
-			engine.state.get_player(
-				player_id
-			)
+		var player: PlayerState = engine.state.get_player(
+			player_id
+		)
 
 		if player == null:
 			continue
 
 		for slot_id: int in SlotID.all_slots():
-			var card: CardInstance = \
-				player.board.get_card(
-					slot_id
-				)
+			var card: CardInstance = player.board.get_card(
+				slot_id
+			)
 
 			if card == null:
 				continue
@@ -1588,23 +1704,50 @@ func _refresh_board_disabled_visuals(
 			if card_view == null:
 				continue
 
-			var disabled: bool = \
-				_is_card_visually_disabled(
+			var source_card: CardInstance = (
+				_find_disabler_source_for_target(
 					player_id,
 					slot_id,
 					card
 				)
+			)
 
-			var hit_duration: float = \
-				card_view.set_disabled(
-					disabled,
-					animate_changes
+			var disabled: bool = source_card != null
+
+			var was_disabled: bool = card_view.is_disabled
+
+			card_view.set_disabled(
+				disabled,
+				false
+			)
+
+			var became_disabled: bool = (
+				disabled
+				and not was_disabled
+			)
+
+			if (
+				animate_changes
+				and became_disabled
+				and source_card != null
+				and source_card.definition != null
+				and vfx_manager != null
+			):
+				var source_view := card_views.get(
+					source_card.instance_id,
+					null
+				) as Card3D
+
+				var hit_duration: float = vfx_manager.play_vfx(
+					source_card.definition.target_vfx,
+					source_view,
+					card_view
 				)
 
-			longest_hit_duration = maxf(
-				longest_hit_duration,
-				hit_duration
-			)
+				longest_hit_duration = maxf(
+					longest_hit_duration,
+					hit_duration
+				)
 
 	return longest_hit_duration
 
@@ -1613,30 +1756,41 @@ func _is_card_visually_disabled(
 	target_slot_id: int,
 	target_card: CardInstance
 ) -> bool:
+	return (
+		_find_disabler_source_for_target(
+			target_owner_id,
+			target_slot_id,
+			target_card
+		)
+		!= null
+	)
+
+func _find_disabler_source_for_target(
+	target_owner_id: int,
+	target_slot_id: int,
+	target_card: CardInstance
+) -> CardInstance:
 	if state == null:
-		return false
+		return null
 
 	if target_card == null:
-		return false
+		return null
 
-	# Disabler باید متعلق به طرف مقابل باشد.
 	var source_owner_id: int = (
 		2 if target_owner_id == 1 else 1
 	)
 
-	var source_player: PlayerState = \
-		state.get_player(
-			source_owner_id
-		)
+	var source_player: PlayerState = state.get_player(
+		source_owner_id
+	)
 
 	if source_player == null:
-		return false
+		return null
 
 	for source_slot_id: int in SlotID.all_slots():
-		var source_card: CardInstance = \
-			source_player.board.get_card(
-				source_slot_id
-			)
+		var source_card: CardInstance = source_player.board.get_card(
+			source_slot_id
+		)
 
 		if source_card == null:
 			continue
@@ -1652,8 +1806,6 @@ func _is_card_visually_disabled(
 		if behavior == null:
 			continue
 
-		# اگر View کارت Disabler وجود ندارد،
-		# یعنی هنوز برای بازیکن Reveal نشده است.
 		var source_view := card_views.get(
 			source_card.instance_id,
 			null
@@ -1670,9 +1822,10 @@ func _is_card_visually_disabled(
 			target_slot_id,
 			target_card
 		):
-			return true
+			return source_card
 
-	return false
+	return null
+
 
 func _start_animated_combat() -> void:
 	interaction_locked = true
@@ -1845,10 +1998,9 @@ func _animate_battle_act(
 				act
 			)
 		BattleAct.Type.CHAINSAW_SWEEP:
-			if $"../SawVFXSpawn/AnimationPlayer" == null:
-				print("animation is null")
-			else:
-				$"../SawVFXSpawn/AnimationPlayer".play("move")
+			await _play_card_ability_vfx_for_act(
+				act
+			)
 
 
 func _play_mustache_card_sequence(
@@ -1860,105 +2012,120 @@ func _play_mustache_card_sequence(
 	if act.attacker == null:
 		return
 
-	if mustache_vfx_spawn == null:
-		push_error("Mustache VFX Spawn is missing.")
+	if act.attacker.definition == null:
 		return
 
-	var affected_views: Array[Card3D] = []
-	var start_positions: Array[Vector3] = []
+	if vfx_manager == null:
+		push_error("CardVFXManager3D is missing.")
+		return
 
-	# خود کارت سنگ سیبیل
 	var mustache_view := card_views.get(
 		act.attacker.instance_id,
 		null
 	) as Card3D
+
+	var vfx_definition: CardVFXDefinition = (
+		act.attacker.definition.ability_vfx
+	)
+
+	if vfx_definition == null:
+		push_warning(
+			"Mustache card has no ability VFX resource."
+		)
+		return
+
+	var affected_views: Array[Card3D] = []
+	var start_positions: Array[Vector3] = []
 
 	if mustache_view != null:
 		affected_views.append(mustache_view)
 		start_positions.append(
 			mustache_view.global_position
 		)
-	# بازیکنی که سنگ سیبیل متعلق به اوست.
+
 	var owner: PlayerState = state.get_player(
 		act.attacker_owner_id
 	)
 
-	if owner == null:
-		await _play_mustache_vfx()
-		return
+	if owner != null:
+		for slot_id: int in SlotID.all_slots():
+			var rock_card: CardInstance = owner.board.get_card(
+				slot_id
+			)
 
-	# تمام کارت‌های ROCK همان بازیکن روی Board
-	for slot_id: int in SlotID.all_slots():
-		var rock_card: CardInstance = \
-			owner.board.get_card(slot_id)
+			if rock_card == null:
+				continue
 
-		if rock_card == null:
-			continue
+			if rock_card == act.attacker:
+				continue
 
-		# سنگ سیبیل قبلاً به لیست اضافه شده است.
-		if rock_card == act.attacker:
-			continue
+			if rock_card.definition == null:
+				continue
 
-		if rock_card.definition == null:
-			continue
+			if (
+				rock_card.definition.gesture
+				!= CardGesture.Type.ROCK
+			):
+				continue
 
-		if (
-			rock_card.definition.gesture
-			!= CardGesture.Type.ROCK
-		):
-			continue
+			var rock_view := card_views.get(
+				rock_card.instance_id,
+				null
+			) as Card3D
 
-		var rock_view := card_views.get(
-			rock_card.instance_id,
-			null
-		) as Card3D
+			if rock_view == null:
+				continue
 
-		if rock_view == null:
-			continue
+			if affected_views.has(rock_view):
+				continue
 
-		if affected_views.has(rock_view):
-			continue
+			affected_views.append(rock_view)
+			start_positions.append(
+				rock_view.global_position
+			)
 
-		affected_views.append(rock_view)
-		start_positions.append(
-			rock_view.global_position
-		)
+	var center_position: Vector3 = (
+		vfx_manager.get_spawn_transform(
+			vfx_definition,
+			mustache_view
+		).origin
+	)
 
-	# حتی اگر View پیدا نشد، خود VFX اجرا شود.
+	if not affected_views.is_empty():
+		var gather_tween: Tween = create_tween()
+		gather_tween.set_parallel(true)
+
+		for card_view: Card3D in affected_views:
+			gather_tween.tween_property(
+				card_view,
+				"global_position",
+				center_position,
+				0.28
+			).set_trans(
+				Tween.TRANS_QUAD
+			).set_ease(
+				Tween.EASE_IN
+			)
+
+		await gather_tween.finished
+
+		for card_view: Card3D in affected_views:
+			if is_instance_valid(card_view):
+				card_view.visible = false
+
+	var effect_duration: float = _play_card_ability_vfx(
+		act.attacker,
+		mustache_view
+	)
+
+	if effect_duration > 0.0:
+		await get_tree().create_timer(
+			effect_duration
+		).timeout
+
 	if affected_views.is_empty():
-		await _play_mustache_vfx()
 		return
 
-	var center_position: Vector3 = \
-		mustache_vfx_spawn.global_position
-
-	# همه کارت‌ها هم‌زمان به وسط می‌روند.
-	var gather_tween: Tween = create_tween()
-	gather_tween.set_parallel(true)
-
-	for card_view: Card3D in affected_views:
-		gather_tween.tween_property(
-			card_view,
-			"global_position",
-			center_position,
-			0.28
-		).set_trans(
-			Tween.TRANS_QUAD
-		).set_ease(
-			Tween.EASE_IN
-		)
-
-	await gather_tween.finished
-
-	# در وسط غیب می‌شوند.
-	for card_view: Card3D in affected_views:
-		if is_instance_valid(card_view):
-			card_view.visible = false
-
-	# انیمیشن مخصوص فقط یک بار اجرا می‌شود.
-	await _play_mustache_vfx()
-
-	# دوباره در همان نقطه ظاهر می‌شوند.
 	for card_view: Card3D in affected_views:
 		if not is_instance_valid(card_view):
 			continue
@@ -1966,7 +2133,6 @@ func _play_mustache_card_sequence(
 		card_view.global_position = center_position
 		card_view.visible = true
 
-	# هم‌زمان به جای اصلی برمی‌گردند.
 	var return_tween: Tween = create_tween()
 	return_tween.set_parallel(true)
 
@@ -1990,284 +2156,49 @@ func _play_mustache_card_sequence(
 	await return_tween.finished
 
 
-func _play_mustache_vfx() -> void:
-	if MUSTACHE_VFX_SCENE == null:
-		push_error("Mustache VFX Scene is missing.")
+func _play_card_ability_vfx_for_act(
+	act: BattleAct
+) -> void:
+	if act == null:
 		return
 
-	if mustache_vfx_spawn == null:
-		push_error("Mustache VFX Spawn is missing.")
+	if act.attacker == null:
 		return
 
-	var holder := Node3D.new()
-	add_child(holder)
+	var source_view := card_views.get(
+		act.attacker.instance_id,
+		null
+	) as Card3D
 
-	holder.top_level = true
-	holder.global_transform = \
-		mustache_vfx_spawn.global_transform
-
-	var mustache_vfx := \
-		MUSTACHE_VFX_SCENE.instantiate() as Node3D
-
-	if mustache_vfx == null:
-		holder.queue_free()
-		push_error("Mustache VFX could not be instantiated.")
-		return
-
-	holder.add_child(mustache_vfx)
-
-	await get_tree().process_frame
-
-	var animation_player := \
-		mustache_vfx.find_child(
-			"AnimationPlayer",
-			true,
-			false
-		) as AnimationPlayer
-
-	if animation_player == null:
-		holder.queue_free()
-		push_error(
-			"Mustache VFX AnimationPlayer was not found."
-		)
-		return
-
-	var animation_name: StringName = \
-		animation_player.get_autoplay()
-
-	if animation_name == &"":
-		if animation_player.has_animation(&"move"):
-			animation_name = &"move"
-		else:
-			for candidate: StringName in \
-					animation_player.get_animation_list():
-
-				if candidate == &"RESET":
-					continue
-
-				animation_name = candidate
-				break
-
-	if animation_name == &"":
-		holder.queue_free()
-		push_error(
-			"Mustache VFX has no playable animation."
-		)
-		return
-
-	print(
-		"MUSTACHE VFX STARTED | animation=",
-		animation_name
+	var effect_duration: float = _play_card_ability_vfx(
+		act.attacker,
+		source_view
 	)
 
-	animation_player.play(animation_name)
+	if effect_duration > 0.0:
+		await get_tree().create_timer(
+			effect_duration
+		).timeout
 
-	await animation_player.animation_finished
 
-	if is_instance_valid(holder):
-		holder.queue_free()
-func _play_saw_dirt_vfx() -> void:
-	if SAW_DIRT_SCENE == null:
-		push_error("Saw Dirt Scene is missing.")
-		return
+func _play_card_ability_vfx(
+	card: CardInstance,
+	source_view: Card3D
+) -> float:
+	if card == null:
+		return 0.0
 
-	if saw_vfx_spawn == null:
-		push_error("Saw VFX Spawn is missing.")
-		return
+	if card.definition == null:
+		return 0.0
 
-	var holder := Node3D.new()
-	add_child(holder)
+	if vfx_manager == null:
+		return 0.0
 
-	holder.top_level = true
-	holder.global_transform = saw_vfx_spawn.global_transform
+	return vfx_manager.play_vfx(
+		card.definition.ability_vfx,
+		source_view
+	)
 
-	var saw_vfx := SAW_DIRT_SCENE.instantiate() as Node3D
-
-	if saw_vfx == null:
-		holder.queue_free()
-		push_error("Saw VFX could not be instantiated.")
-		return
-
-	holder.add_child(saw_vfx)
-
-	# صبر می‌کنیم تمام Childها وارد SceneTree شوند.
-	await get_tree().process_frame
-
-	# ریشه و تمام فرزندان VFX را جمع می‌کنیم.
-	var all_nodes: Array[Node] = [saw_vfx]
-	var node_index: int = 0
-
-	while node_index < all_nodes.size():
-		var current_node: Node = all_nodes[node_index]
-
-		for child: Node in current_node.get_children():
-			all_nodes.append(child)
-
-		node_index += 1
-
-	var maximum_duration: float = 0.0
-	var started_component_count: int = 0
-
-	# اول تمام AnimationTreeها فعال می‌شوند.
-	for node: Node in all_nodes:
-		if node is AnimationTree:
-			var animation_tree := node as AnimationTree
-			animation_tree.active = true
-
-	# تمام AnimationPlayerها بدون await پشت سر هم شروع می‌شوند.
-	for node: Node in all_nodes:
-		if not node is AnimationPlayer:
-			continue
-
-		var animation_player := node as AnimationPlayer
-		var animation_name: StringName = animation_player.autoplay
-
-		if animation_name == &"":
-			if animation_player.has_animation(&"move"):
-				animation_name = &"move"
-			else:
-				for candidate: StringName in \
-						animation_player.get_animation_list():
-
-					if candidate == &"RESET":
-						continue
-
-					animation_name = candidate
-					break
-
-		if animation_name == &"":
-			continue
-
-		var animation: Animation = \
-			animation_player.get_animation(
-				animation_name
-			)
-
-		if animation != null:
-			maximum_duration = maxf(
-				maximum_duration,
-				animation.length
-			)
-
-		animation_player.stop()
-		animation_player.play(animation_name)
-
-		# Trackهای زمان صفر، از جمله Audio Track،
-		# همین فریم پردازش می‌شوند.
-		animation_player.advance(0.0)
-
-		started_component_count += 1
-
-		print(
-			"SAW ANIMATION STARTED | ",
-			animation_player.get_path(),
-			" | animation=",
-			animation_name
-		)
-
-	# تمام Particleها، Spriteها و صداها هم در همان فریم شروع می‌شوند.
-	for node: Node in all_nodes:
-		if node is GPUParticles3D:
-			var gpu_particles := node as GPUParticles3D
-
-			gpu_particles.restart()
-			gpu_particles.emitting = true
-
-			var particle_duration: float = (
-				gpu_particles.lifetime
-				/ maxf(gpu_particles.speed_scale, 0.01)
-			)
-
-			maximum_duration = maxf(
-				maximum_duration,
-				particle_duration
-			)
-
-			started_component_count += 1
-
-		elif node is CPUParticles3D:
-			var cpu_particles := node as CPUParticles3D
-
-			cpu_particles.restart()
-			cpu_particles.emitting = true
-
-			var particle_duration: float = (
-				cpu_particles.lifetime
-				/ maxf(cpu_particles.speed_scale, 0.01)
-			)
-
-			maximum_duration = maxf(
-				maximum_duration,
-				particle_duration
-			)
-
-			started_component_count += 1
-
-		elif node is AnimatedSprite3D:
-			var animated_sprite_3d := node as AnimatedSprite3D
-			animated_sprite_3d.play()
-			started_component_count += 1
-
-		elif node is AnimatedSprite2D:
-			var animated_sprite_2d := node as AnimatedSprite2D
-			animated_sprite_2d.play()
-			started_component_count += 1
-
-		elif node is AudioStreamPlayer:
-			var audio_player := node as AudioStreamPlayer
-
-			if audio_player.stream == null:
-				continue
-
-			maximum_duration = maxf(
-				maximum_duration,
-				audio_player.stream.get_length()
-			)
-
-			audio_player.play()
-			started_component_count += 1
-
-			print(
-				"SAW AUDIO STARTED | ",
-				audio_player.get_path()
-			)
-
-		elif node is AudioStreamPlayer3D:
-			var audio_player_3d := node as AudioStreamPlayer3D
-
-			if audio_player_3d.stream == null:
-				continue
-
-			# صدای سه‌بعدی موقتاً از محدودیت فاصله خارج می‌شود.
-			audio_player_3d.max_distance = 1000.0
-
-			maximum_duration = maxf(
-				maximum_duration,
-				audio_player_3d.stream.get_length()
-			)
-
-			audio_player_3d.play()
-			started_component_count += 1
-
-			print(
-				"SAW 3D AUDIO STARTED | ",
-				audio_player_3d.get_path()
-			)
-
-	if started_component_count == 0:
-		holder.queue_free()
-		push_error("Saw VFX: nothing was started.")
-		return
-
-	if maximum_duration <= 0.0:
-		maximum_duration = 2.5
-
-	# زمان اضافه برای تمام‌شدن دنباله ذرات و صدا.
-	await get_tree().create_timer(
-		maximum_duration + 0.75
-	).timeout
-
-	holder.queue_free()
 func _animate_player_vs_dealer(
 	act: BattleAct
 ) -> void:
@@ -2807,34 +2738,61 @@ func _find_board_card_by_instance_id(
 
 	return null
 
-func _play_card_placement_disable_sequence(
+func _play_card_placed_vfx(
 	card_view: Card3D
+) -> float:
+	if card_view == null:
+		return 0.0
+
+	if card_view.card_instance == null:
+		return 0.0
+
+	if card_view.card_instance.definition == null:
+		return 0.0
+
+	if vfx_manager == null:
+		return 0.0
+
+	return vfx_manager.play_vfx(
+		card_view.card_instance.definition.placed_vfx,
+		card_view
+	)
+
+
+func _play_card_placement_disable_sequence(
+	card_view: Card3D,
+	placed_vfx_duration: float = 0.0
 ) -> void:
 	if card_view == null:
 		return
 
-	# ابتدا فقط انیمیشن خود Disabler.
-	var activate_duration: float = \
-		card_view.play_on_placed_effect()
+	if card_view.card_instance == null:
+		return
 
-	# صبر تا پایان کامل انیمیشن Disabler.
-	if activate_duration > 0.0:
+	if card_view.card_instance.definition == null:
+		return
+
+	var disabler_behavior := (
+		card_view.card_instance.definition.behavior
+		as DisableGestureBehavior
+	)
+
+	if disabler_behavior == null:
+		return
+
+	if placed_vfx_duration > 0.0:
 		await get_tree().create_timer(
-			activate_duration
+			placed_vfx_duration
 		).timeout
 
-	# بعد از پایان Disabler، انیمیشن Targetها شروع می‌شود.
-	var hit_duration: float = \
-		_refresh_board_disabled_visuals(
-			true
-		)
+	var hit_duration: float = _refresh_board_disabled_visuals(
+		true
+	)
 
-	# صبر تا انیمیشن Targetها کامل تمام شود.
 	if hit_duration > 0.0:
 		await get_tree().create_timer(
 			hit_duration
 		).timeout
-
 
 func _play_collector_vfx_before_combat() -> void:
 	if state == null:
@@ -2951,12 +2909,17 @@ func _play_collector_vfx_before_combat() -> void:
 				target_views.size()
 			)
 
-			# افکت Collector همین حالا شروع می‌شود.
-			var effect_duration: float = \
-				collector_view.play_collector_effect()
+			# Collector VFX is instantiated only while this ability is running.
+			var effect_duration: float = 0.0
 
-			# کمی بعد همه کارت‌ها باهم حرکت می‌کنند.
-			var pull_delay: float = 0.20
+			if vfx_manager != null:
+				effect_duration = vfx_manager.play_vfx(
+					collector_card.definition.ability_vfx,
+					collector_view
+				)
+
+			# A short delay lets the effect establish before cards move.
+			var pull_delay: float = collector_pull_delay
 			var pull_duration: float = 0.55
 			var elapsed_time: float = 0.0
 
