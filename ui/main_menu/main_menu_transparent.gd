@@ -41,22 +41,16 @@ var maximum_sync_drift: float = 0.06
 
 @onready var help_button: Button = \
 	$MenuRoot/HelpButton
+@onready var start_button: Button = $MenuRoot/StartButton
 
 @onready var help_video_player: VideoStreamPlayer = \
 	$MenuRoot/HelpVideoPlayer
 @onready var menu_root: Control = $MenuRoot
-
-@onready var color_player: VideoStreamPlayer = \
-	$MenuRoot/ColorPlayer
-
-@onready var alpha_player: VideoStreamPlayer = \
-	$MenuRoot/AlphaPlayer
+@onready var color_player: VideoStreamPlayer = $MenuRoot/ColorPlayer
+@onready var alpha_player: VideoStreamPlayer = $MenuRoot/AlphaPlayer
 
 @onready var composite: ColorRect = \
 	$MenuRoot/Composite
-
-@onready var start_button: Button = \
-	$MenuRoot/StartButton
 
 @onready var mode_buttons: Control = \
 	$MenuRoot/ModeButtons
@@ -109,6 +103,7 @@ func _ready() -> void:
 		disable_two_player_for_now
 
 	start_button.pressed.connect(
+		
 		_on_start_button_pressed
 	)
 
@@ -277,7 +272,7 @@ func _on_start_button_pressed() -> void:
 		return
 
 	transition_is_running = true
-
+	print("startttttttttttttttttttttt")
 	start_button.hide()
 	mode_buttons.hide()
 

@@ -4,11 +4,11 @@ extends CanvasLayer
 
 signal end_turn_pressed
 
+@onready var menu_button: TextureButton = $Root/PlayerPassPanel/MenuButton
 
 @onready var info_button: TextureButton = $InfoButton
 @onready var info_panel: Control = $InfoPanel
 @onready var close_button: TextureButton = $InfoPanel/CloseButton
-
 @onready var turn_label: Label = $Root/PlayerInfo/TurnLabel
 @onready var player_score_label: Label = $Root/PlayerInfo/PlayerScoreLabel
 @onready var opponent_score_label: Label = $Root/PlayerInfo/OpponentScoreLabel
@@ -31,10 +31,13 @@ signal end_turn_pressed
 	%RestartButton
 
 func _ready() -> void:
+	menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
+	menu_button.pressed.connect(_on_menu_button_pressed)
 	end_turn_button.pressed.connect(
 		_on_end_turn_button_pressed
 	)
 	game_over_overlay.visible = false
+
 
 	restart_button.pressed.connect(
 		Callable(
@@ -51,6 +54,10 @@ func _ready() -> void:
 	close_button.pressed.connect(
 		_on_info_close_pressed
 	)
+
+func _on_menu_button_pressed() -> void:
+	get_tree().paused = false
+	get_tree().reload_current_scene()
 
 
 func _on_info_button_pressed() -> void:
