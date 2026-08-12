@@ -63,6 +63,7 @@ var maximum_sync_drift: float = 0.06
 
 @onready var single_player_button: Button = \
 	$MenuRoot/ModeButtons/SinglePlayerButton
+@onready var tutorial_button: Button = $MenuRoot/ModeButtons/HelpButton
 
 @onready var two_player_button: Button = \
 	$MenuRoot/ModeButtons/TwoPlayerButton
@@ -70,9 +71,10 @@ var maximum_sync_drift: float = 0.06
 @onready var hardcore_button: Button = \
 	$MenuRoot/ModeButtons/HardcoreButton
 
-
+@onready var alpha_notice: Control = $AlphaNotice
+@onready var understood_button: TextureButton = $AlphaNotice/UnderstoodButton
 var phase: int = MenuPhase.IDLE
-
+var tutorial_mode_selected: bool = false
 var transition_is_running: bool = false
 var game_transition_running: bool = false
 
@@ -80,6 +82,12 @@ var composite_material: ShaderMaterial
 
 
 func _ready() -> void:
+	menu_root.hide()
+	alpha_notice.show()
+
+	understood_button.pressed.connect(
+		_on_understood_pressed
+	)
 	# منو و ویدیوها حتی در حالت Pause اجرا می‌شوند.
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
@@ -111,7 +119,9 @@ func _ready() -> void:
 	two_player_button.pressed.connect(
 		_on_two_player_button_pressed
 	)
-
+	tutorial_button.pressed.connect(
+		_on_tutorial_button_pressed
+	)
 	hardcore_button.pressed.connect(
 		_on_hardcore_button_pressed
 	)
@@ -125,6 +135,11 @@ func _ready() -> void:
 		idle_alpha_video,
 		MenuPhase.IDLE
 	)
+
+func _on_understood_pressed() -> void:
+	alpha_notice.hide()
+	menu_root.show()
+
 func _on_help_button_pressed() -> void:
 	if help_video == null:
 		push_error("Help Video is not assigned.")
@@ -272,15 +287,24 @@ func _on_start_button_pressed() -> void:
 		MenuPhase.START_TRANSITION
 	)
 
-
 func _on_single_player_button_pressed() -> void:
+	tutorial_mode_selected = false
+
+	var controller: MatchController3D = \
+		_get_match_controller()
+
+	if controller != null:
+		controller.tutorial_enabled = false
 	if transition_is_running:
 		return
 
 	if game_transition_running:
 		return
 
-	# ربات معمولی فقط کارت‌های Revealشده را می‌بیند.
+
+	if controller != null:
+		controller.tutorial_enabled = false
+
 	ProjectSettings.set_setting(
 		"gameplay/hardcore_bot",
 		false
@@ -290,8 +314,39 @@ func _on_single_player_button_pressed() -> void:
 
 	await _start_game_sequence()
 
+func _on_tutorial_button_pressed() -> void:
+	if transition_is_running:
+		return
+
+	if game_transition_running:
+		return
+
+	tutorial_mode_selected = true
+
+	ProjectSettings.set_setting(
+		"gameplay/hardcore_bot",
+		false
+	)
+
+	var controller: MatchController3D = \
+		_get_match_controller()
+
+	if controller != null:
+		controller.tutorial_enabled = true
+
+	single_player_selected.emit()
+
+	await _start_game_sequence()
+
 
 func _on_hardcore_button_pressed() -> void:
+	tutorial_mode_selected = false
+
+	var controller: MatchController3D = \
+		_get_match_controller()
+
+	if controller != null:
+		controller.tutorial_enabled = false
 	if transition_is_running:
 		return
 
@@ -377,7 +432,10 @@ func _start_game_sequence() -> void:
 		game_transition_running = false
 		return
 
-	controller.begin_deck_selection()
+	if tutorial_mode_selected:
+		await controller.begin_tutorial_match()
+	else:
+		controller.begin_deck_selection()
 
 	# دیگر به منو نیاز نداریم.
 	queue_free()

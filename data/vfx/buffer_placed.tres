@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://c2052lkdt76x5"]
+
+[ext_resource type="PackedScene" uid="uid://drayp7l74wu1u" path="res://VFX/buffer/shild_bede.tscn" id="1_7wnsx"]
+[ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_nopoi"]
+
+[resource]
+script = ExtResource("1_nopoi")
+scene = ExtResource("1_7wnsx")
+metadata/_custom_type_script = "uid://bkksl8ddhyoyx"

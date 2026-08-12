@@ -6,7 +6,7 @@
 [ext_resource type="Shader" uid="uid://d207hjwtt36o5" path="res://VFX/disabler/impact_sphere.gdshader" id="4_t48yx"]
 [ext_resource type="Shader" uid="uid://c0ppdhr2g4crc" path="res://VFX/disabler/glow.gdshader" id="5_0qegy"]
 [ext_resource type="Shader" uid="uid://c0bvwe15ajr0i" path="res://VFX/disabler/ground_streaks.gdshader" id="6_cle3q"]
-[ext_resource type="Script" uid="uid://mmsvwoaw6tce" path="res://VFX/disabler/VFXOmniLightBB.gd" id="7_fpm0p"]
+[ext_resource type="Script" uid="uid://cehgjyw8seo48" path="res://VFX/VFXOmniLightBB.gd" id="7_fpm0p"]
 [ext_resource type="AudioStream" uid="uid://b0hvby55jki3k" path="res://VFX/disabler/zehendrew-electro-impact-528398.mp3" id="8_3xkyq"]
 
 [sub_resource type="Gradient" id="Gradient_trd8c"]
@@ -485,6 +485,7 @@ draw_pass_2 = SubResource("CylinderMesh_060of")
 
 [node name="VFXOmniLightBB" type="OmniLight3D" parent="." unique_id=1676978169]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+visible = false
 light_color = Color(0, 0.84313726, 1, 1)
 light_energy = 0.0
 light_indirect_energy = 0.0

@@ -61,6 +61,12 @@ var deck_choice_animation_time: float = 0.30
 @export var hud: GameHUD
 @export var balance_scale: GameBalanceScale3D
 
+@export_category("Tutorial")
+@export var tutorial_enabled: bool = false
+# Optional portrait shown inside the tutorial speech panel. If left empty,
+# the tutorial uses its built-in RPS GUIDE fallback badge.
+@export var tutorial_guide_texture: Texture2D
+
 
 @export_category("Drag")
 @export_range(1, 2, 1)
@@ -97,6 +103,7 @@ var pending_bot_plays: Array[CardPlayRecord] = []
 
 var deck_selection_active: bool = false
 var deck_choice_cards: Array[Card3D] = []
+var tutorial_controller: TutorialController
 
 
 func _ready() -> void:
@@ -223,7 +230,15 @@ func _remove_legacy_resident_vfx() -> void:
 	mustache_vfx_spawn = null
 	MUSTACHE_VFX_SCENE = null
 	SAW_DIRT_SCENE = null
+func begin_tutorial_match() -> void:
+	if state != null:
+		return
 
+	tutorial_enabled = true
+
+	await _start_match_with_selected_deck(
+		player_one_deck
+	)
 
 func begin_deck_selection() -> void:
 	if deck_selection_active:
@@ -467,6 +482,11 @@ func _start_match_with_selected_deck(
 		dealer_deck
 	)
 
+	if tutorial_enabled:
+		_ensure_tutorial_controller()
+		if tutorial_controller != null:
+			tutorial_controller.prepare_match_state()
+
 	await _sync_visual_state()
 
 	hud.visible = true
@@ -479,7 +499,44 @@ func _start_match_with_selected_deck(
 	interaction_locked = false
 	_refresh_balance_scale()
 
+	if tutorial_enabled and tutorial_controller != null:
+		tutorial_controller.start()
+
 	print("Match started with selected player deck.")
+
+
+func _ensure_tutorial_controller() -> void:
+	if is_instance_valid(tutorial_controller):
+		return
+
+	tutorial_controller = TutorialController.new()
+	tutorial_controller.name = "TutorialController"
+	add_child(tutorial_controller)
+	tutorial_controller.setup(self)
+
+
+func refresh_tutorial_visual_state() -> void:
+	# Public tutorial-only bridge: rebuild the 3D card views after the
+	# deterministic tutorial changes hands / boards directly.
+	await _sync_visual_state()
+
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.sync_visual_visibility()
+
+	if hud != null:
+		hud.refresh(
+			state,
+			local_player_id
+		)
+
+	_refresh_balance_scale()
+
+
+func play_tutorial_collector_vfx_now() -> void:
+	# The reference tutorial shows Collector pulling Rock cards immediately
+	# after it is placed. Reuse the project's existing Collector VFX sequence;
+	# TutorialController performs the tutorial-only state change afterwards.
+	await _play_collector_vfx_before_combat()
 
 
 func _prepare_bot_turn() -> void:
@@ -505,10 +562,15 @@ func _prepare_bot_turn() -> void:
 		bot_player_id
 	)
 
-	bot_controller.play_turn(
-		engine,
-		bot_player_id
-	)
+	var used_tutorial_script: bool = false
+	if tutorial_controller != null and tutorial_controller.is_active():
+		used_tutorial_script = tutorial_controller.execute_scripted_bot_turn()
+
+	if not used_tutorial_script:
+		bot_controller.play_turn(
+			engine,
+			bot_player_id
+		)
 
 	pending_bot_plays = engine.consume_play_records(
 		bot_player_id
@@ -578,6 +640,14 @@ func _on_end_turn_pressed() -> void:
 	if interaction_locked:
 		return
 
+	if (
+		tutorial_controller != null
+		and tutorial_controller.is_active()
+		and not tutorial_controller.can_press_end_turn()
+	):
+		tutorial_controller.notify_wrong_action()
+		return
+
 	if state == null:
 		return
 
@@ -601,6 +671,9 @@ func _on_end_turn_pressed() -> void:
 
 	if not success:
 		return
+
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.notify_end_turn_pressed()
 
 	interaction_locked = true
 
@@ -644,6 +717,11 @@ func _run_reveal_and_battle() -> void:
 
 	pending_local_cards.clear()
 	pending_bot_plays.clear()
+
+	# Tutorial can pause here, after reveal but before score/combat animation,
+	# so every explanation beat from the reference tutorial is shown.
+	if tutorial_controller != null and tutorial_controller.is_active():
+		await tutorial_controller.wait_before_combat()
 
 	await _start_animated_combat()
 
@@ -920,6 +998,86 @@ func _restore_local_board_dragging() -> void:
 				drag_callable
 			)
 
+func _get_dealer_card_ids() -> Dictionary:
+	var result: Dictionary = {}
+
+	if state == null:
+		return result
+
+	if state.dealer == null:
+		return result
+
+	for slot_id: int in DealerSlotID.all_slots():
+		var card: CardInstance = state.dealer.slots.get(
+			slot_id,
+			null
+		) as CardInstance
+
+		if card == null:
+			continue
+
+		result[card.instance_id] = true
+
+	return result
+
+
+func _play_new_dealer_placed_vfx(
+	previous_card_ids: Dictionary
+) -> void:
+	if state == null:
+		return
+
+	if state.dealer == null:
+		return
+
+	var longest_duration: float = 0.0
+
+	for slot_id: int in DealerSlotID.all_slots():
+		var card: CardInstance = state.dealer.slots.get(
+			slot_id,
+			null
+		) as CardInstance
+
+		if card == null:
+			continue
+
+		# این کارت قبلاً روی زمین بوده.
+		if previous_card_ids.has(card.instance_id):
+			continue
+
+		if card.definition == null:
+			continue
+
+		# این کارت اصلاً Placed VFX ندارد.
+		if card.definition.placed_vfx == null:
+			continue
+
+		var card_view: Card3D = card_views.get(
+			card.instance_id,
+			null
+		) as Card3D
+
+		if card_view == null:
+			continue
+
+		print(
+			"DEALER PLACED VFX | ",
+			card.definition.display_name
+		)
+
+		var duration: float = _play_card_placed_vfx(
+			card_view
+		)
+
+		longest_duration = maxf(
+			longest_duration,
+			duration
+		)
+
+	if longest_duration > 0.0:
+		await get_tree().create_timer(
+			longest_duration
+		).timeout
 
 func _spawn_dealer_cards() -> void:
 	for slot_id: int in DealerSlotID.all_slots():
@@ -1114,9 +1272,20 @@ func _start_card_drag(
 	):
 		return
 
+	if (
+		tutorial_controller != null
+		and tutorial_controller.is_active()
+		and not tutorial_controller.can_start_drag(card)
+	):
+		tutorial_controller.notify_wrong_action()
+		return
+
 	dragged_card = card_view
 	pointer_start_position = screen_position
 	pointer_has_dragged = false
+
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.notify_drag_started(card)
 
 func _input(event: InputEvent) -> void:
 	# Deck selection is handled directly by screen position.
@@ -1301,6 +1470,13 @@ func _toggle_keep_card(
 	var card: CardInstance = \
 		card_view.card_instance
 
+	if tutorial_controller != null and tutorial_controller.is_active():
+		if tutorial_controller.try_handle_card_tap(card):
+			return
+		if not tutorial_controller.can_toggle_keep_card():
+			tutorial_controller.notify_wrong_action()
+			return
+
 	if card == null:
 		return
 
@@ -1377,20 +1553,35 @@ func _finish_card_drag(
 
 	if place == null:
 		card_view.return_home()
+		if tutorial_controller != null and tutorial_controller.is_active():
+			tutorial_controller.notify_wrong_action()
 		return
 
 	if place.kind != CardPlace3D.Kind.PLAYER_BOARD:
 		card_view.return_home()
+		if tutorial_controller != null and tutorial_controller.is_active():
+			tutorial_controller.notify_wrong_action()
 		return
 
 	if place.owner_id != local_player_id:
 		card_view.return_home()
+		if tutorial_controller != null and tutorial_controller.is_active():
+			tutorial_controller.notify_wrong_action()
 		return
 
 	var card: CardInstance = card_view.card_instance
 
 	if card == null:
 		card_view.return_home()
+		return
+
+	if (
+		tutorial_controller != null
+		and tutorial_controller.is_active()
+		and not tutorial_controller.can_drop(card, place)
+	):
+		card_view.return_home()
+		tutorial_controller.notify_wrong_action()
 		return
 
 	var original_zone: CardZone.Type = card.zone
@@ -1443,6 +1634,13 @@ func _finish_card_drag(
 		)
 
 		await _refresh_hand_positions()
+
+		if tutorial_controller != null and tutorial_controller.is_active():
+			tutorial_controller.notify_successful_drop(
+				card,
+				original_zone,
+				place.logical_id
+			)
 		return
 
 	if original_zone == CardZone.Type.BOARD:
@@ -1473,6 +1671,13 @@ func _finish_card_drag(
 			state,
 			local_player_id
 		)
+
+		if tutorial_controller != null and tutorial_controller.is_active():
+			tutorial_controller.notify_successful_drop(
+				card,
+				original_zone,
+				place.logical_id
+			)
 		return
 
 	card_view.return_home()
@@ -1873,6 +2078,13 @@ func _start_animated_combat() -> void:
 	var retained_cards: Array[CardInstance] = \
 		_take_selected_cards_from_local_hand()
 
+	# یادمان باشد الان چه کارت‌هایی روی زمین Dealer هستند.
+	var previous_dealer_card_ids: Dictionary = \
+		_get_dealer_card_ids()
+
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.prepare_next_dealer_before_finish_combat()
+
 	engine.finish_combat()
 
 	_restore_retained_cards_to_local_hand(
@@ -1883,7 +2095,16 @@ func _start_animated_combat() -> void:
 
 	kept_hand_card_ids.clear()
 
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.prepare_new_turn_state()
+
 	await _sync_visual_state()
+	# هر Dealer card جدیدی که Placed VFX دارد، الان افکتش را پخش کن.
+	await _play_new_dealer_placed_vfx(
+		previous_dealer_card_ids
+	)
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.sync_visual_visibility()
 
 	hud.refresh(
 		state,
@@ -1896,6 +2117,8 @@ func _start_animated_combat() -> void:
 	interaction_locked = false
 	hud.set_interaction_enabled(true)
 
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.notify_combat_finished()
 
 
 func _take_selected_cards_from_local_hand() -> Array[CardInstance]:

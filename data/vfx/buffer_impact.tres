@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://bv7v6ipldwgyp"]
+
+[ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_bkiwd"]
+[ext_resource type="PackedScene" uid="uid://bdanuxij6t5kx" path="res://VFX/buffer/divine_impact_shield.tscn" id="1_dhrbv"]
+
+[resource]
+script = ExtResource("1_bkiwd")
+scene = ExtResource("1_dhrbv")
+spawn_target = 1
+animation_name = &"buffer impact"
+metadata/_custom_type_script = "uid://bkksl8ddhyoyx"

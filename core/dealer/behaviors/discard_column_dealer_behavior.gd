@@ -61,11 +61,15 @@ func _get_target_slots(
 		DealerSlotID.Type.MIDDLE_0:
 			return [
 				SlotID.Type.FRONT_MIDDLE_0,
-				SlotID.Type.BACK_MIDDLE_0
+				SlotID.Type.BACK_MIDDLE_0,
+				SlotID.Type.FRONT_MIDDLE_1,
+				SlotID.Type.BACK_MIDDLE_1
 			]
 
 		DealerSlotID.Type.MIDDLE_1:
 			return [
+				SlotID.Type.FRONT_MIDDLE_0,
+				SlotID.Type.BACK_MIDDLE_0,
 				SlotID.Type.FRONT_MIDDLE_1,
 				SlotID.Type.BACK_MIDDLE_1
 			]

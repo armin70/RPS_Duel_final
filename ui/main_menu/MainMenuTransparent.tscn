@@ -6,11 +6,19 @@
 [ext_resource type="VideoStream" uid="uid://v65fckurxiwq" path="res://ui/main_menu/start_color.ogv" id="4_start_color"]
 [ext_resource type="VideoStream" uid="uid://caljy6mbsnfmw" path="res://ui/main_menu/start_alpha.ogv" id="5_start_alpha"]
 [ext_resource type="Shader" uid="uid://ci80kcdjfymhl" path="res://ui/main_menu/transparent_video_composite.gdshader" id="6_shader"]
+[ext_resource type="Texture2D" uid="uid://6gx0n1q6j4yh" path="res://art/popup.png" id="7_ks0fx"]
+[ext_resource type="Texture2D" uid="uid://px0ep0ak8cq3" path="res://art/iunderstand.png" id="8_cl6cx"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_video"]
 shader = ExtResource("6_shader")
 shader_parameter/alpha_gamma = 1.0
 shader_parameter/alpha_multiplier = 1.0
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_tl07x"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_q7ne7"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ks0fx"]
 
 [node name="MainMenu" type="CanvasLayer" unique_id=480882812]
 layer = 100
@@ -85,16 +93,15 @@ mouse_filter = 1
 [node name="SinglePlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=110001582]
 layout_mode = 1
 anchors_preset = -1
-anchor_left = 0.285
-anchor_top = 0.32
-anchor_right = 0.43
-anchor_bottom = 0.47
-offset_left = 205.79999
-offset_top = 100.399994
-offset_right = 205.79999
-offset_bottom = 100.399994
+anchor_right = 0.14500001
+anchor_bottom = 0.15
+offset_left = 684.0
+offset_top = 368.0
+offset_right = 684.0
+offset_bottom = 368.0
 grow_horizontal = 2
 grow_vertical = 2
+scale = Vector2(1.3553777, 1.3553777)
 focus_mode = 0
 mouse_default_cursor_shape = 2
 flat = true
@@ -128,10 +135,45 @@ flat = true
 
 [node name="HelpButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=219209116]
 layout_mode = 0
-offset_right = 8.0
-offset_bottom = 8.0
+offset_left = 863.0
+offset_top = 599.0
+offset_right = 1163.0
+offset_bottom = 799.0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_tl07x")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_q7ne7")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_ks0fx")
 
 [node name="HelpVideoPlayer" type="VideoStreamPlayer" parent="MenuRoot/ModeButtons" unique_id=712810018]
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
+
+[node name="AlphaNotice" type="Control" parent="." unique_id=1036165477]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TextureRect" type="TextureRect" parent="AlphaNotice" unique_id=1351784110]
+layout_mode = 0
+offset_left = 315.0
+offset_top = 20.000002
+offset_right = 1978.0001
+offset_bottom = 1169.0
+scale = Vector2(0.73568064, 0.73568064)
+texture = ExtResource("7_ks0fx")
+stretch_mode = 5
+
+[node name="UnderstoodButton" type="TextureButton" parent="AlphaNotice" unique_id=1887024795]
+layout_mode = 0
+offset_left = 753.0
+offset_top = 876.0
+offset_right = 1248.0
+offset_bottom = 1071.0
+scale = Vector2(0.8522746, 0.8522746)
+texture_normal = ExtResource("8_cl6cx")
+texture_pressed = ExtResource("8_cl6cx")
+texture_hover = ExtResource("8_cl6cx")
+stretch_mode = 4

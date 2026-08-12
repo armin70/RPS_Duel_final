@@ -42,14 +42,9 @@ var particles : Array[GPUParticles3D]:
 			particles = result
 		return result
 
-var anim : AnimationPlayer:
-	get():
-		if get_node("AnimationPlayer"):
-			if !Engine.is_editor_hint() && anim:
-				return anim
-			return $AnimationPlayer
-		else:
-			return null
+var anim: AnimationPlayer:
+	get:
+		return get_node_or_null("AnimationPlayer") as AnimationPlayer
 
 @export var emitting : bool = true:
 	set(v):
@@ -83,7 +78,16 @@ func _set_shader_param(key : String, value : Variant) -> void:
 		m.set_shader_parameter(key, value)
 
 func open() -> void:
-	anim.play("open")
+	var animation_player: AnimationPlayer = anim
+
+	if animation_player != null:
+		if animation_player.has_animation("open"):
+			animation_player.play("open")
+
 
 func close() -> void:
-	anim.play("close")
+	var animation_player: AnimationPlayer = anim
+
+	if animation_player != null:
+		if animation_player.has_animation("close"):
+			animation_player.play("close")

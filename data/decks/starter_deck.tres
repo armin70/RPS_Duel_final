@@ -14,6 +14,7 @@
 [ext_resource type="Resource" uid="uid://tlpd8apbnib6" path="res://data/cards/paper_demolisher.tres" id="12_br6ro"]
 [ext_resource type="Resource" uid="uid://dj8sgdgd56cc1" path="res://data/cards/scissors_demolisher.tres" id="13_1li3d"]
 [ext_resource type="Resource" uid="uid://b0hdfg6msb6i6" path="res://data/cards/collector_scissors.tres" id="13_br6ro"]
+[ext_resource type="Resource" uid="uid://bo7kba74lwqth" path="res://data/cards/chainsaw.tres" id="14_br6ro"]
 
 [sub_resource type="Resource" id="Resource_un4ry"]
 script = ExtResource("1_colqg")
@@ -78,7 +79,13 @@ script = ExtResource("1_colqg")
 card = ExtResource("13_1li3d")
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
+[sub_resource type="Resource" id="Resource_1li3d"]
+script = ExtResource("1_colqg")
+card = ExtResource("14_br6ro")
+copies = 5
+metadata/_custom_type_script = "uid://dcjdk55xiluso"
+
 [resource]
 script = ExtResource("2_kx3ku")
-entries = Array[ExtResource("1_colqg")]([SubResource("Resource_un4ry"), SubResource("Resource_tx4j5"), SubResource("Resource_wby2k"), SubResource("Resource_tq234"), SubResource("Resource_giuae"), SubResource("Resource_73a2v"), SubResource("Resource_jrlfy"), SubResource("Resource_047aw"), SubResource("Resource_afy75"), SubResource("Resource_q5ltv"), SubResource("Resource_h7cgg"), SubResource("Resource_qxnvd")])
+entries = Array[ExtResource("1_colqg")]([SubResource("Resource_un4ry"), SubResource("Resource_tx4j5"), SubResource("Resource_wby2k"), SubResource("Resource_tq234"), SubResource("Resource_giuae"), SubResource("Resource_73a2v"), SubResource("Resource_jrlfy"), SubResource("Resource_047aw"), SubResource("Resource_afy75"), SubResource("Resource_q5ltv"), SubResource("Resource_h7cgg"), SubResource("Resource_qxnvd"), SubResource("Resource_1li3d")])
 metadata/_custom_type_script = "uid://dsgb7xp50w70e"

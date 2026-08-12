@@ -5,6 +5,9 @@ extends CanvasLayer
 signal end_turn_pressed
 
 
+@onready var info_button: TextureButton = $InfoButton
+@onready var info_panel: Control = $InfoPanel
+@onready var close_button: TextureButton = $InfoPanel/CloseButton
 
 @onready var turn_label: Label = $Root/PlayerInfo/TurnLabel
 @onready var player_score_label: Label = $Root/PlayerInfo/PlayerScoreLabel
@@ -39,6 +42,24 @@ func _ready() -> void:
 			"_on_restart_button_pressed"
 		)
 	)
+	info_panel.hide()
+
+	info_button.pressed.connect(
+		_on_info_button_pressed
+	)
+
+	close_button.pressed.connect(
+		_on_info_close_pressed
+	)
+
+
+func _on_info_button_pressed() -> void:
+	info_panel.show()
+
+
+func _on_info_close_pressed() -> void:
+	info_panel.hide()
+
 
 func refresh(
 	state: MatchState,

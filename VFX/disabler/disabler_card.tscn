@@ -4,7 +4,7 @@
 [ext_resource type="Shader" uid="uid://331xx6kaxnil" path="res://VFX/disabler/electric_particle.gdshader" id="2_et68k"]
 [ext_resource type="Shader" uid="uid://c0ppdhr2g4crc" path="res://VFX/disabler/glow.gdshader" id="3_n1rfj"]
 [ext_resource type="Shader" uid="uid://do65ak10edplr" path="res://VFX/disabler/four_point_star.gdshader" id="4_715q7"]
-[ext_resource type="Script" uid="uid://mmsvwoaw6tce" path="res://VFX/disabler/VFXOmniLightBB.gd" id="5_obv12"]
+[ext_resource type="Script" uid="uid://cehgjyw8seo48" path="res://VFX/VFXOmniLightBB.gd" id="5_obv12"]
 [ext_resource type="AudioStream" uid="uid://c7efnls1u08to" path="res://VFX/disabler/Silence Ready.mp3" id="6_rriv7"]
 
 [sub_resource type="Gradient" id="Gradient_yxxev"]
@@ -28,7 +28,6 @@ shader = ExtResource("2_et68k")
 shader_parameter/primary_color = Color(0, 0, 0, 1)
 shader_parameter/secondary_color = Color(0, 0, 0, 1)
 shader_parameter/emission = 2.0
-shader_parameter/noise_texture = null
 shader_parameter/noise_scale = Vector2(1, 1)
 shader_parameter/frequency = 1.0
 shader_parameter/amplitude = 0.3
@@ -243,7 +242,6 @@ _data = {
 transform = Transform3D(0.011283129, 0, -0.62027, 0, -0.67035544, 0, 0.30348063, 0, 0.023061052, 0, 0, 0)
 script = ExtResource("1_jxdix")
 primary_color = Color(0.9137255, 0.65882355, 1, 1)
-light_color = Color(0, 0.84313726, 1, 1)
 noise_texture = SubResource("NoiseTexture2D_fgfa5")
 
 [node name="Zaps" type="GPUParticles3D" parent="." unique_id=1846962651]
@@ -287,6 +285,7 @@ process_material = SubResource("ParticleProcessMaterial_3sm8h")
 draw_pass_1 = SubResource("QuadMesh_mjwcd")
 
 [node name="VFXOmniLightBB" type="OmniLight3D" parent="." unique_id=65471043]
+visible = false
 light_color = Color(0, 0.84313726, 1, 1)
 light_energy = 5.0
 light_indirect_energy = 0.0

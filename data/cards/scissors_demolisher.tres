@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://cirqleme7ys7h" path="res://core/cards/behaviors/discard_lane_draw_behavior.gd" id="1_t41pe"]
 [ext_resource type="Texture2D" uid="uid://c1q6d4glnrwu" path="res://art/cards/38.png" id="2_t41pe"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_xtc45"]
-[ext_resource type="Resource" path="res://data/vfx/bomb_placed_vfx.tres" id="99_vfx1"]
+[ext_resource type="Resource" uid="uid://dnduak4qkoiw" path="res://data/vfx/bomb_placed_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_g4gwm"]
 script = ExtResource("1_t41pe")
