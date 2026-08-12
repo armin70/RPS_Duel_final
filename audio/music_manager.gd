@@ -10,18 +10,20 @@ var music_volume_db: float = -10.0
 @onready var music_player: AudioStreamPlayer = \
 	$MusicPlayer
 
-
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	music_player.process_mode = Node.PROCESS_MODE_ALWAYS
 
 	music_player.volume_db = music_volume_db
 
-	if background_music == null:
+	# اگر از Inspector آهنگ داده شده، از آن استفاده کن.
+	if background_music != null:
+		music_player.stream = background_music
+
+	# در غیر این صورت همان Stream داخل MusicPlayer را استفاده کن.
+	if music_player.stream == null:
 		push_error("Background music is not assigned.")
 		return
-
-	music_player.stream = background_music
 
 	_enable_builtin_loop()
 
@@ -32,8 +34,8 @@ func _ready() -> void:
 			_on_music_finished
 		)
 
-	music_player.play(0.0)
-
+	if not music_player.playing:
+		music_player.play(0.0)
 
 func _enable_builtin_loop() -> void:
 	var audio_stream: AudioStream = \
