@@ -9,16 +9,16 @@
 [ext_resource type="Texture2D" uid="uid://6gx0n1q6j4yh" path="res://art/popup.png" id="7_ks0fx"]
 [ext_resource type="Texture2D" uid="uid://px0ep0ak8cq3" path="res://art/iunderstand.png" id="8_cl6cx"]
 
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_video"]
+shader = ExtResource("6_shader")
+shader_parameter/alpha_gamma = 1.0
+shader_parameter/alpha_multiplier = 1.0
+
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_tl07x"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_q7ne7"]
 
 [sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_ks0fx"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_video"]
-shader = ExtResource("6_shader")
-shader_parameter/alpha_gamma = 1.0
-shader_parameter/alpha_multiplier = 1.0
 
 [node name="MainMenu" type="CanvasLayer" unique_id=480882812]
 layer = 100
@@ -35,73 +35,6 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-
-[node name="ModeButtons" type="Control" parent="MenuRoot" unique_id=1255517034]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 1
-
-[node name="SinglePlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=110001582]
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 0.14500001
-anchor_bottom = 0.15
-offset_left = 781.99994
-offset_top = 346.0
-offset_right = 782.0
-offset_bottom = 346.0
-grow_horizontal = 2
-grow_vertical = 2
-scale = Vector2(1.3553777, 1.3553777)
-focus_mode = 0
-mouse_default_cursor_shape = 2
-flat = true
-
-[node name="TwoPlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=1437106841]
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.43
-anchor_top = 0.32
-anchor_right = 0.555
-anchor_bottom = 0.47
-grow_horizontal = 2
-grow_vertical = 2
-focus_mode = 0
-mouse_default_cursor_shape = 2
-flat = true
-
-[node name="HardcoreButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=883718107]
-modulate = Color(1, 1, 1, 0)
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.9
-anchor_top = 0.86
-anchor_right = 0.985
-anchor_bottom = 0.985
-grow_horizontal = 2
-grow_vertical = 2
-focus_mode = 0
-mouse_default_cursor_shape = 2
-flat = true
-
-[node name="HelpButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=219209116]
-layout_mode = 0
-offset_left = 1095.0
-offset_top = 508.0
-offset_right = 1395.0
-offset_bottom = 708.0
-theme_override_styles/normal = SubResource("StyleBoxEmpty_tl07x")
-theme_override_styles/pressed = SubResource("StyleBoxEmpty_q7ne7")
-theme_override_styles/hover = SubResource("StyleBoxEmpty_ks0fx")
-
-[node name="HelpVideoPlayer" type="VideoStreamPlayer" parent="MenuRoot/ModeButtons" unique_id=712810018]
-layout_mode = 0
-offset_right = 40.0
-offset_bottom = 40.0
 
 [node name="ColorPlayer" type="VideoStreamPlayer" parent="MenuRoot" unique_id=1151379756]
 modulate = Color(1, 1, 1, 0)
@@ -136,6 +69,74 @@ offset_right = -218.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+
+[node name="ModeButtons" type="Control" parent="MenuRoot" unique_id=1255517034]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="SinglePlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=110001582]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 0.14500001
+anchor_bottom = 0.15
+offset_left = 897.99994
+offset_top = 402.0
+offset_right = 780.0
+offset_bottom = 390.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(1.3553777, 1.3553777)
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TwoPlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=1437106841]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.43
+anchor_top = 0.32
+anchor_right = 0.555
+anchor_bottom = 0.47
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="HardcoreButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=883718107]
+modulate = Color(1, 1, 1, 0)
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.9
+anchor_top = 0.86
+anchor_right = 0.985
+anchor_bottom = 0.985
+grow_horizontal = 2
+grow_vertical = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="HelpButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=219209116]
+layout_mode = 0
+offset_left = 1071.0
+offset_top = 590.0
+offset_right = 1371.0
+offset_bottom = 790.0
+theme_override_styles/normal = SubResource("StyleBoxEmpty_tl07x")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_q7ne7")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_ks0fx")
+
+[node name="HelpVideoPlayer" type="VideoStreamPlayer" parent="MenuRoot/ModeButtons" unique_id=712810018]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
 
 [node name="StartButton" type="Button" parent="MenuRoot" unique_id=873099335]
 layout_mode = 1
