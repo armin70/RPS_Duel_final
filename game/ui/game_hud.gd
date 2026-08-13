@@ -29,6 +29,13 @@ signal end_turn_pressed
 
 @onready var restart_button: Button = \
 	%RestartButton
+@onready var survey_button: Button = %SurveyButton
+@onready var music_button: TextureButton = \
+	$Root/PlayerPassPanel/MusicButton
+
+@export var music_on_texture: Texture2D
+@export var music_off_texture: Texture2D
+@export var survey_url: String = ""
 
 func _ready() -> void:
 	menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -37,8 +44,16 @@ func _ready() -> void:
 		_on_end_turn_button_pressed
 	)
 	game_over_overlay.visible = false
+	survey_button.pressed.connect(
+		_on_survey_button_pressed
+	)
+	music_button.process_mode = Node.PROCESS_MODE_ALWAYS
 
+	music_button.pressed.connect(
+		_on_music_button_pressed
+	)
 
+	_refresh_music_button()
 	restart_button.pressed.connect(
 		Callable(
 			self,
@@ -54,6 +69,28 @@ func _ready() -> void:
 	close_button.pressed.connect(
 		_on_info_close_pressed
 	)
+
+func _on_music_button_pressed() -> void:
+	if MusicManager.music_player.stream_paused:
+		MusicManager.resume_music()
+	else:
+		MusicManager.pause_music()
+
+	_refresh_music_button()
+
+
+func _refresh_music_button() -> void:
+	if MusicManager.music_player.stream_paused:
+		music_button.texture_normal = music_off_texture
+	else:
+		music_button.texture_normal = music_on_texture
+
+func _on_survey_button_pressed() -> void:
+	if survey_url.is_empty():
+		return
+
+	OS.shell_open(survey_url)
+
 
 func _on_menu_button_pressed() -> void:
 	get_tree().paused = false

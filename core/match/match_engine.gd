@@ -544,8 +544,7 @@ func begin_combat() -> BattleSequence:
 	state.phase = MatchPhase.Type.BATTLE
 	# همه Behaviorهای Start Combat قبل از ساخت صف اجرا می‌شوند.
 	_run_start_combat_behaviors()
-	if _check_score_victory():
-		return BattleSequence.new()
+
 	active_battle_sequence = \
 		BattleResolver.build_sequence(state)
 
@@ -586,25 +585,6 @@ func apply_battle_act(
 				act.defender_points
 
 	act.resolved = true
-
-	var game_ended: bool = \
-		_check_score_victory()
-
-	print(
-		"VICTORY CHECK | P1=",
-		state.player_one.score,
-		" | P2=",
-		state.player_two.score,
-		" | difference=",
-		abs(
-			state.player_one.score
-			- state.player_two.score
-		),
-		" | target=",
-		state.rules.winning_score_difference,
-		" | ended=",
-		game_ended
-	)
 
 	return true
 
@@ -1100,6 +1080,17 @@ func _record_completed_play(
 
 	play_records_by_player[player_id] = \
 		stored_records
+
+func finalize_combat_score() -> bool:
+	if state == null:
+		return false
+
+	if state.phase != MatchPhase.Type.BATTLE:
+		return false
+
+	# فقط وقتی تمام BattleActهای این Turn محاسبه شدند
+	# اجازه داریم اختلاف نهایی را بررسی کنیم.
+	return _check_score_victory()
 
 
 func _check_score_victory() -> bool:

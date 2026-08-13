@@ -2070,8 +2070,14 @@ func _start_animated_combat() -> void:
 			0.25
 		).timeout
 
-	if state.phase == MatchPhase.Type.GAME_OVER:
-		_refresh_battle_scores()
+	# تمام Clashهای هر دو بازیکن کامل محاسبه شده‌اند.
+	# حالا برای اولین بار اختلاف نهایی را بررسی می‌کنیم.
+	var game_ended: bool = \
+		engine.finalize_combat_score()
+
+	_refresh_battle_scores()
+
+	if game_ended:
 		_finish_game()
 		return
 

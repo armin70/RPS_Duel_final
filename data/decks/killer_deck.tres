@@ -6,11 +6,11 @@
 [ext_resource type="Resource" uid="uid://cx1gkltjetjq5" path="res://data/cards/killer_scissors.tres" id="3_opiip"]
 [ext_resource type="Resource" uid="uid://dj8sgdgd56cc1" path="res://data/cards/scissors_demolisher.tres" id="4_evym3"]
 [ext_resource type="Resource" uid="uid://djnkmyua3qr1h" path="res://data/cards/normal_rock.tres" id="5_pfaa1"]
-[ext_resource type="Resource" uid="uid://eg67jfy768rm" path="res://data/cards/rock_demolisher.tres" id="6_aqh3m"]
-[ext_resource type="Resource" uid="uid://dh1li58kaqijc" path="res://data/cards/defense_rock.tres" id="7_osgci"]
+[ext_resource type="Resource" uid="uid://b3xgbsolklyil" path="res://data/cards/killer_rock.tres" id="6_t38wf"]
+[ext_resource type="Resource" uid="uid://d1o8wuvky4y3s" path="res://data/cards/defense_paper.tres" id="7_opiip"]
 [ext_resource type="Resource" uid="uid://crj8duj0hfwi3" path="res://data/cards/normal_paper.tres" id="8_y0km3"]
 [ext_resource type="Resource" uid="uid://bo7kba74lwqth" path="res://data/cards/chainsaw.tres" id="9_t38wf"]
-[ext_resource type="Resource" uid="uid://cl52waa5uu5ym" path="res://data/cards/buffer_paper.tres" id="10_opiip"]
+[ext_resource type="Resource" uid="uid://dbdl5c2ia58r1" path="res://data/cards/killer_paper.tres" id="10_evym3"]
 
 [sub_resource type="Resource" id="Resource_qf4jb"]
 script = ExtResource("1_ftnn2")
@@ -37,13 +37,13 @@ metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [sub_resource type="Resource" id="Resource_ytd5v"]
 script = ExtResource("1_ftnn2")
-card = ExtResource("6_aqh3m")
+card = ExtResource("6_t38wf")
 copies = 2
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [sub_resource type="Resource" id="Resource_chvnb"]
 script = ExtResource("1_ftnn2")
-card = ExtResource("7_osgci")
+card = ExtResource("7_opiip")
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [sub_resource type="Resource" id="Resource_ohudr"]
@@ -59,7 +59,7 @@ metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [sub_resource type="Resource" id="Resource_pfaa1"]
 script = ExtResource("1_ftnn2")
-card = ExtResource("10_opiip")
+card = ExtResource("10_evym3")
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [resource]
