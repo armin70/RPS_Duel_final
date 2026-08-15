@@ -75,6 +75,12 @@ var game_transition_running: bool = false
 var composite_material: ShaderMaterial
 
 
+const TUTORIAL_PROGRESS_PATH: String = \
+	"user://tutorial_progress.cfg"
+const TUTORIAL_PROGRESS_SECTION: String = "tutorial"
+const TUTORIAL_PROGRESS_KEY: String = "completed"
+
+
 func _ready() -> void:
 	menu_root.hide()
 	alpha_notice.show()
@@ -283,31 +289,50 @@ func _on_start_button_pressed() -> void:
 	)
 
 func _on_single_player_button_pressed() -> void:
-	tutorial_mode_selected = false
-
-	var controller: MatchController3D = \
-		_get_match_controller()
-
-	if controller != null:
-		controller.tutorial_enabled = false
 	if transition_is_running:
 		return
 
 	if game_transition_running:
 		return
 
-
-	if controller != null:
-		controller.tutorial_enabled = false
-
 	ProjectSettings.set_setting(
 		"gameplay/hardcore_bot",
 		false
 	)
 
+	# فقط اولین بار که بازیکن وارد Single Player می‌شود،
+	# Tutorial به صورت خودکار اجرا می‌شود.
+	tutorial_mode_selected = not _tutorial_has_been_completed()
+
+	var controller: MatchController3D = \
+		_get_match_controller()
+
+	if controller != null:
+		controller.tutorial_enabled = tutorial_mode_selected
+
 	single_player_selected.emit()
 
 	await _start_game_sequence()
+
+
+func _tutorial_has_been_completed() -> bool:
+	var config := ConfigFile.new()
+	var load_error: Error = config.load(
+		TUTORIAL_PROGRESS_PATH
+	)
+
+	# فایل هنوز وجود ندارد = اولین اجرای Tutorial.
+	if load_error != OK:
+		return false
+
+	return bool(
+		config.get_value(
+			TUTORIAL_PROGRESS_SECTION,
+			TUTORIAL_PROGRESS_KEY,
+			false
+		)
+	)
+
 
 func _on_tutorial_button_pressed() -> void:
 	if transition_is_running:

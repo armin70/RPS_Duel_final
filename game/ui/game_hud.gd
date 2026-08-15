@@ -36,6 +36,7 @@ signal end_turn_pressed
 @export var music_on_texture: Texture2D
 @export var music_off_texture: Texture2D
 @export var survey_url: String = ""
+var exit_confirmation: ConfirmationDialog
 
 func _ready() -> void:
 	menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -69,7 +70,22 @@ func _ready() -> void:
 	close_button.pressed.connect(
 		_on_info_close_pressed
 	)
+	exit_confirmation = ConfirmationDialog.new()
 
+	exit_confirmation.title = "Return to Menu"
+	exit_confirmation.dialog_text = \
+		"Are you sure you want to return to the main menu?"
+
+	exit_confirmation.ok_button_text = "Yes"
+	exit_confirmation.cancel_button_text = "No"
+
+	exit_confirmation.process_mode = Node.PROCESS_MODE_ALWAYS
+
+	exit_confirmation.confirmed.connect(
+		_confirm_return_to_menu
+	)
+
+	add_child(exit_confirmation)
 func _on_music_button_pressed() -> void:
 	if MusicManager.music_player.stream_paused:
 		MusicManager.resume_music()
@@ -93,9 +109,12 @@ func _on_survey_button_pressed() -> void:
 
 
 func _on_menu_button_pressed() -> void:
+	exit_confirmation.popup_centered(
+		Vector2i(500, 220)
+	)
+func _confirm_return_to_menu() -> void:
 	get_tree().paused = false
 	get_tree().reload_current_scene()
-
 
 func _on_info_button_pressed() -> void:
 	info_panel.show()

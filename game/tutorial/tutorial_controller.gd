@@ -35,6 +35,16 @@ const SLOT_SPOTLIGHT_SIZE := Vector2(102.0, 128.0)
 const CONTROL_SPOTLIGHT_PADDING := Vector2(18.0, 14.0)
 const SCALE_SPOTLIGHT_SIZE := Vector2(260.0, 190.0)
 
+const GUIDE_FRAME_DIR: String = "res://game/tutorial/demon_frames"
+const GUIDE_FRAME_COUNT: int = 69
+const GUIDE_FRAME_FPS: float = 30.0
+const GUIDE_FRAME_SIZE := Vector2(240.0, 336.0)
+
+const TUTORIAL_PROGRESS_PATH: String = \
+	"user://tutorial_progress.cfg"
+const TUTORIAL_PROGRESS_SECTION: String = "tutorial"
+const TUTORIAL_PROGRESS_KEY: String = "completed"
+
 
 enum Step {
 	INTRO_1,
@@ -100,6 +110,9 @@ enum Step {
 	FINISHED,
 }
 
+var guide_sprite: AnimatedSprite2D
+
+
 var match_controller: MatchController3D
 var step: Step = Step.INTRO_1
 var active: bool = false
@@ -128,8 +141,6 @@ var dim_right: ColorRect
 var focus_border: Panel
 var pointer_label: Label
 var dialogue_panel: Panel
-var guide_texture_rect: TextureRect
-var guide_fallback: Label
 var title_label: Label
 var message_label: Label
 var instruction_label: Label
@@ -672,7 +683,7 @@ func notify_combat_finished() -> void:
 
 
 func skip() -> void:
-	_finish_tutorial()
+	_exit_tutorial_to_menu()
 
 
 func _set_step(new_step: Step) -> void:
@@ -920,7 +931,7 @@ func _set_step(new_step: Step) -> void:
 		Step.NEW_TURN_2:
 			_show_dialogue(
 				"",
-				"بریم سراغ نوبت بعدی، من کارت‌هامو عوض می‌کنم. تو هم چندتا کارت جدید بردار یدونه مانا اضافه هم گیر",
+				"بریم سراغ نوبت بعدی، من کارت‌هامو عوض می‌کنم. تو هم چندتا کارت جدید بردار یدونه مانا اضافه هم گیرت میاد",
 				"ادامه"
 			)
 			_focus_all_local_hand_cards()
@@ -1233,7 +1244,14 @@ func _on_continue_pressed() -> void:
 			_exit_tutorial_to_menu()
 
 func _exit_tutorial_to_menu() -> void:
+	# رسیدن به انتهای Tutorial یا زدن Skip یعنی
+	# Tutorial خودکار دیگر در Single Player نمایش داده نشود.
+	_mark_tutorial_completed()
+
 	active = false
+
+	if guide_sprite != null:
+		guide_sprite.stop()
 
 	if overlay_root != null:
 		overlay_root.hide()
@@ -1242,12 +1260,39 @@ func _exit_tutorial_to_menu() -> void:
 
 	# کل Main Scene از اول Load می‌شود.
 	# در نتیجه Main Menu دوباره ظاهر می‌شود.
+	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+func _mark_tutorial_completed() -> void:
+	var config := ConfigFile.new()
+
+	# اگر فایل قبلاً وجود داشته باشد، مقدارهای دیگرش حفظ می‌شوند.
+	config.load(TUTORIAL_PROGRESS_PATH)
+
+	config.set_value(
+		TUTORIAL_PROGRESS_SECTION,
+		TUTORIAL_PROGRESS_KEY,
+		true
+	)
+
+	var save_error: Error = config.save(
+		TUTORIAL_PROGRESS_PATH
+	)
+
+	if save_error != OK:
+		push_error(
+			"Could not save tutorial progress: "
+			+ str(save_error)
+		)
+
 
 func _finish_tutorial() -> void:
 	active = false
 	step = Step.FINISHED
 	visible = false
+	if guide_sprite != null:
+		guide_sprite.stop()
 	_hide_card_preview()
 	target_nodes_3d.clear()
 	target_control = null
@@ -2096,20 +2141,76 @@ func _position_dialogue(
 	if dialogue_panel == null:
 		return
 
-	var panel_width: float = clampf(viewport_size.x * 0.39, 310.0, 520.0)
-	var panel_height: float = clampf(viewport_size.y * 0.29, 235.0, 345.0)
-	panel_width = minf(panel_width, viewport_size.x - 32.0)
-	panel_height = minf(panel_height, viewport_size.y - 80.0)
+	var panel_width: float = clampf(
+		viewport_size.x * 0.46,
+		460.0,
+		600.0
+	)
+
+	var panel_height: float = clampf(
+		viewport_size.y * 0.36,
+		470.0,
+		640.0
+	)
+
+	panel_width = minf(
+		panel_width,
+		viewport_size.x - 32.0
+	)
+
+	panel_height = minf(
+		panel_height,
+		viewport_size.y - 80.0
+	)
 
 	var margin: float = 20.0
-	var x: float = viewport_size.x - panel_width - margin
-	if has_focus and focus_rect.get_center().x > viewport_size.x * 0.55:
+	var x: float = (
+		viewport_size.x
+		- panel_width
+		- margin
+	)
+
+	if (
+		has_focus
+		and focus_rect.get_center().x
+		> viewport_size.x * 0.55
+	):
 		x = margin
 
-	# Keep the speech panel away from the player's hand at the bottom.
-	var y: float = clampf(viewport_size.y * 0.14, 24.0, viewport_size.y - panel_height - 24.0)
+	# Keep the speech panel away from the player's hand.
+	var y: float = clampf(
+		viewport_size.y * 0.14,
+		24.0,
+		viewport_size.y
+		- panel_height
+		- 24.0
+	)
+
 	dialogue_panel.position = Vector2(x, y)
-	dialogue_panel.size = Vector2(panel_width, panel_height)
+	dialogue_panel.size = Vector2(
+		panel_width,
+		panel_height
+	)
+
+	# Animated demon sits centered under the dialogue box.
+	if guide_sprite != null:
+		var demon_width: float = panel_width * 0.48
+		var demon_height: float = (
+			demon_width
+			* GUIDE_FRAME_SIZE.y
+			/ GUIDE_FRAME_SIZE.x
+		)
+
+		guide_sprite.scale = Vector2(
+			demon_width / GUIDE_FRAME_SIZE.x,
+			demon_height / GUIDE_FRAME_SIZE.y
+		)
+
+		guide_sprite.position = Vector2(
+			x
+			+ (panel_width - demon_width) * 0.5,
+			y + panel_height - 30.0
+		)
 
 
 func _hide_focus() -> void:
@@ -2154,190 +2255,439 @@ func _hide_card_preview() -> void:
 func _build_ui() -> void:
 	overlay_root = Control.new()
 	overlay_root.name = "TutorialOverlay"
-	overlay_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	overlay_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_root.set_anchors_and_offsets_preset(
+		Control.PRESET_FULL_RECT
+	)
+	overlay_root.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	add_child(overlay_root)
 
-	var dim_color := Color(0.035, 0.02, 0.065, 0.62)
+	var dim_color := Color(
+		0.035,
+		0.02,
+		0.065,
+		0.62
+	)
+
 	for index: int in range(4):
 		var rect := ColorRect.new()
 		rect.color = dim_color
-		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rect.mouse_filter = (
+			Control.MOUSE_FILTER_IGNORE
+		)
 		rect.visible = false
 		overlay_root.add_child(rect)
-		match index:
-			0: dim_top = rect
-			1: dim_bottom = rect
-			2: dim_left = rect
-			3: dim_right = rect
 
+		match index:
+			0:
+				dim_top = rect
+			1:
+				dim_bottom = rect
+			2:
+				dim_left = rect
+			3:
+				dim_right = rect
+
+	# -------------------------------------------------
+	# Animated Demon Guide - Sprite Frames
+	# -------------------------------------------------
+	guide_sprite = AnimatedSprite2D.new()
+	guide_sprite.name = "GuideSprite"
+	guide_sprite.centered = false
+
+	var guide_frames := SpriteFrames.new()
+	guide_frames.set_animation_speed(
+		&"default",
+		GUIDE_FRAME_FPS
+	)
+	guide_frames.set_animation_loop(
+		&"default",
+		true
+	)
+
+	for frame_index: int in range(
+		1,
+		GUIDE_FRAME_COUNT + 1
+	):
+		var frame_path: String = (
+			GUIDE_FRAME_DIR
+			+ "/frame_%04d.png" % frame_index
+		)
+
+		if not ResourceLoader.exists(frame_path):
+			push_error(
+				"Tutorial demon frame missing: "
+				+ frame_path
+			)
+			continue
+
+		var frame_texture := load(
+			frame_path
+		) as Texture2D
+
+		if frame_texture != null:
+			guide_frames.add_frame(
+				&"default",
+				frame_texture
+			)
+
+	guide_sprite.sprite_frames = guide_frames
+	guide_sprite.animation = &"default"
+	guide_sprite.play()
+
+	# Add before Dialogue so the dialogue box can render above it.
+	overlay_root.add_child(
+		guide_sprite
+	)
+
+	# -------------------------------------------------
+	# Spotlight
+	# -------------------------------------------------
 	focus_border = Panel.new()
-	focus_border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	focus_border.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	focus_border.visible = false
+
 	var focus_style := StyleBoxFlat.new()
-	focus_style.bg_color = Color(1.0, 0.8, 0.18, 0.04)
-	focus_style.border_color = Color(1.0, 0.77, 0.18, 0.98)
+	focus_style.bg_color = Color(
+		1.0,
+		0.8,
+		0.18,
+		0.04
+	)
+	focus_style.border_color = Color(
+		1.0,
+		0.77,
+		0.18,
+		0.98
+	)
 	focus_style.set_border_width_all(4)
 	focus_style.set_corner_radius_all(16)
-	focus_border.add_theme_stylebox_override("panel", focus_style)
-	overlay_root.add_child(focus_border)
 
-	# Large card inspection used by the Mustache Rock and Collector beats.
-	# It uses the card's real front_texture, so the enlarged card is exactly
-	# the same artwork as the playable card rather than a duplicate mock-up.
+	focus_border.add_theme_stylebox_override(
+		"panel",
+		focus_style
+	)
+
+	overlay_root.add_child(
+		focus_border
+	)
+
+	# -------------------------------------------------
+	# Large card preview
+	# -------------------------------------------------
 	card_preview_panel = Panel.new()
 	card_preview_panel.name = "CardPreview"
 	card_preview_panel.anchor_left = 0.32
 	card_preview_panel.anchor_right = 0.60
 	card_preview_panel.anchor_top = 0.07
 	card_preview_panel.anchor_bottom = 0.83
-	card_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_preview_panel.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	card_preview_panel.visible = false
+
 	var preview_style := StyleBoxFlat.new()
-	preview_style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
-	preview_style.border_color = Color(0.0, 0.0, 0.0, 0.0)
+	preview_style.bg_color = Color(
+		0.0,
+		0.0,
+		0.0,
+		0.0
+	)
+	preview_style.border_color = Color(
+		0.0,
+		0.0,
+		0.0,
+		0.0
+	)
 	preview_style.set_border_width_all(0)
 	preview_style.set_corner_radius_all(12)
-	card_preview_panel.add_theme_stylebox_override("panel", preview_style)
-	overlay_root.add_child(card_preview_panel)
+
+	card_preview_panel.add_theme_stylebox_override(
+		"panel",
+		preview_style
+	)
+
+	overlay_root.add_child(
+		card_preview_panel
+	)
 
 	card_preview_texture = TextureRect.new()
-	card_preview_texture.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	card_preview_texture.set_anchors_and_offsets_preset(
+		Control.PRESET_FULL_RECT
+	)
 	card_preview_texture.offset_left = 8.0
 	card_preview_texture.offset_top = 8.0
 	card_preview_texture.offset_right = -8.0
 	card_preview_texture.offset_bottom = -8.0
-	card_preview_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	card_preview_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	card_preview_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card_preview_texture.expand_mode = (
+		TextureRect.EXPAND_IGNORE_SIZE
+	)
+	card_preview_texture.stretch_mode = (
+		TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	)
+	card_preview_texture.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	card_preview_texture.visible = false
-	card_preview_panel.add_child(card_preview_texture)
 
+	card_preview_panel.add_child(
+		card_preview_texture
+	)
+
+	# -------------------------------------------------
+	# Pointer
+	# -------------------------------------------------
 	pointer_label = Label.new()
 	pointer_label.text = "▼"
-	pointer_label.add_theme_font_size_override("font_size", 42)
-	pointer_label.add_theme_color_override("font_color", Color(1.0, 0.79, 0.2))
-	pointer_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pointer_label.add_theme_font_size_override(
+		"font_size",
+		42
+	)
+	pointer_label.add_theme_color_override(
+		"font_color",
+		Color(
+			1.0,
+			0.79,
+			0.2
+		)
+	)
+	pointer_label.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	pointer_label.visible = false
-	pointer_label.size = Vector2(64.0, 58.0)
-	pointer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	overlay_root.add_child(pointer_label)
+	pointer_label.size = Vector2(
+		64.0,
+		58.0
+	)
+	pointer_label.horizontal_alignment = (
+		HORIZONTAL_ALIGNMENT_CENTER
+	)
 
+	overlay_root.add_child(
+		pointer_label
+	)
+
+	# -------------------------------------------------
+	# Dialogue panel
+	# این بعد از GuideComposite اضافه می‌شود،
+	# پس باکس روی دیو رسم می‌شود.
+	# -------------------------------------------------
 	dialogue_panel = Panel.new()
 	dialogue_panel.name = "Dialogue"
 	dialogue_panel.anchor_left = 0.0
 	dialogue_panel.anchor_right = 0.0
 	dialogue_panel.anchor_top = 0.0
 	dialogue_panel.anchor_bottom = 0.0
-	dialogue_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dialogue_panel.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
+
 	var dialogue_style := StyleBoxFlat.new()
-	dialogue_style.bg_color = Color(0.965, 0.925, 0.79, 0.98)
-	dialogue_style.border_color = Color(0.30, 0.16, 0.12, 0.98)
+	dialogue_style.bg_color = Color(
+		0.965,
+		0.925,
+		0.79,
+		0.98
+	)
+	dialogue_style.border_color = Color(
+		0.30,
+		0.16,
+		0.12,
+		0.98
+	)
 	dialogue_style.set_border_width_all(4)
 	dialogue_style.set_corner_radius_all(18)
-	dialogue_panel.add_theme_stylebox_override("panel", dialogue_style)
-	overlay_root.add_child(dialogue_panel)
 
-	guide_texture_rect = TextureRect.new()
-	guide_texture_rect.anchor_left = 0.015
-	guide_texture_rect.anchor_right = 0.17
-	guide_texture_rect.anchor_top = 0.08
-	guide_texture_rect.anchor_bottom = 0.90
-	guide_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	guide_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	guide_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dialogue_panel.add_child(guide_texture_rect)
+	dialogue_panel.add_theme_stylebox_override(
+		"panel",
+		dialogue_style
+	)
 
-	guide_fallback = Label.new()
-	guide_fallback.text = "RPS\nGUIDE"
-	guide_fallback.anchor_left = 0.03
-	guide_fallback.anchor_right = 0.16
-	guide_fallback.anchor_top = 0.25
-	guide_fallback.anchor_bottom = 0.75
-	guide_fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	guide_fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	guide_fallback.add_theme_font_size_override("font_size", 18)
-	guide_fallback.add_theme_color_override("font_color", Color(0.31, 0.14, 0.12))
-	guide_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dialogue_panel.add_child(guide_fallback)
+	overlay_root.add_child(
+		dialogue_panel
+	)
 
-	var guide_texture: Texture2D = null
-	if match_controller != null and match_controller.tutorial_guide_texture != null:
-		guide_texture = match_controller.tutorial_guide_texture
-	elif ResourceLoader.exists("res://game/tutorial/tutorial_guide.png"):
-		guide_texture = load("res://game/tutorial/tutorial_guide.png") as Texture2D
-
-	if guide_texture != null:
-		guide_texture_rect.texture = guide_texture
-		guide_fallback.visible = false
-
+	# -------------------------------------------------
+	# Title
+	# -------------------------------------------------
 	title_label = Label.new()
 	title_label.anchor_left = 0.19
 	title_label.anchor_right = 0.95
 	title_label.anchor_top = 0.09
 	title_label.anchor_bottom = 0.27
-	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 25)
-	title_label.add_theme_color_override("font_color", Color(0.29, 0.13, 0.10))
-	title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title_label.horizontal_alignment = (
+		HORIZONTAL_ALIGNMENT_RIGHT
+	)
+	title_label.vertical_alignment = (
+		VERTICAL_ALIGNMENT_CENTER
+	)
+	title_label.add_theme_font_size_override(
+		"font_size",
+		25
+	)
+	title_label.add_theme_color_override(
+		"font_color",
+		Color(
+			0.29,
+			0.13,
+			0.10
+		)
+	)
+	title_label.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	title_label.visible = false
-	dialogue_panel.add_child(title_label)
 
+	dialogue_panel.add_child(
+		title_label
+	)
+
+	# -------------------------------------------------
+	# Main dialogue text
+	# -------------------------------------------------
 	message_label = Label.new()
-	message_label.anchor_left = 0.19
+	message_label.anchor_left = 0.08
 	message_label.anchor_right = 0.95
-	message_label.anchor_top = 0.12
-	message_label.anchor_bottom = 0.74
-	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	message_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	message_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	message_label.add_theme_font_size_override("font_size", 21)
-	message_label.text_direction = Control.TEXT_DIRECTION_RTL
-	message_label.add_theme_color_override("font_color", Color(0.20, 0.105, 0.085))
-	message_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dialogue_panel.add_child(message_label)
+	message_label.anchor_top = 0.10
+	message_label.anchor_bottom = 0.73
+	message_label.horizontal_alignment = (
+		HORIZONTAL_ALIGNMENT_RIGHT
+	)
+	message_label.vertical_alignment = (
+		VERTICAL_ALIGNMENT_TOP
+	)
+	message_label.autowrap_mode = (
+		TextServer.AUTOWRAP_WORD_SMART
+	)
+	message_label.add_theme_font_size_override(
+		"font_size",
+		30
+	)
+	message_label.text_direction = (
+		Control.TEXT_DIRECTION_RTL
+	)
+	message_label.add_theme_color_override(
+		"font_color",
+		Color(
+			0.20,
+			0.105,
+			0.085
+		)
+	)
+	message_label.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 
+	dialogue_panel.add_child(
+		message_label
+	)
+
+	# -------------------------------------------------
+	# Instruction
+	# -------------------------------------------------
 	instruction_label = Label.new()
 	instruction_label.anchor_left = 0.19
 	instruction_label.anchor_right = 0.67
 	instruction_label.anchor_top = 0.72
 	instruction_label.anchor_bottom = 0.94
-	instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	instruction_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	instruction_label.add_theme_font_size_override("font_size", 17)
-	instruction_label.add_theme_color_override("font_color", Color(0.43, 0.20, 0.10))
-	instruction_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	dialogue_panel.add_child(instruction_label)
+	instruction_label.horizontal_alignment = (
+		HORIZONTAL_ALIGNMENT_RIGHT
+	)
+	instruction_label.vertical_alignment = (
+		VERTICAL_ALIGNMENT_CENTER
+	)
+	instruction_label.add_theme_font_size_override(
+		"font_size",
+		17
+	)
+	instruction_label.add_theme_color_override(
+		"font_color",
+		Color(
+			0.43,
+			0.20,
+			0.10
+		)
+	)
+	instruction_label.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 
+	dialogue_panel.add_child(
+		instruction_label
+	)
+
+	# -------------------------------------------------
+	# Continue button
+	# -------------------------------------------------
 	continue_button = Button.new()
 	continue_button.anchor_left = 0.72
 	continue_button.anchor_right = 0.95
 	continue_button.anchor_top = 0.72
 	continue_button.anchor_bottom = 0.92
-	continue_button.mouse_filter = Control.MOUSE_FILTER_STOP
-	continue_button.add_theme_font_size_override("font_size", 18)
-	continue_button.pressed.connect(_on_continue_pressed)
-	dialogue_panel.add_child(continue_button)
+	continue_button.mouse_filter = (
+		Control.MOUSE_FILTER_STOP
+	)
+	continue_button.add_theme_font_size_override(
+		"font_size",
+		18
+	)
+	continue_button.pressed.connect(
+		_on_continue_pressed
+	)
 
+	dialogue_panel.add_child(
+		continue_button
+	)
+
+	# -------------------------------------------------
+	# Progress
+	# -------------------------------------------------
 	progress_label = Label.new()
 	progress_label.anchor_left = 0.02
 	progress_label.anchor_right = 0.18
 	progress_label.anchor_top = 0.02
 	progress_label.anchor_bottom = 0.10
-	progress_label.add_theme_font_size_override("font_size", 14)
-	progress_label.add_theme_color_override("font_color", Color(0.35, 0.20, 0.14))
-	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	progress_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	progress_label.add_theme_font_size_override(
+		"font_size",
+		14
+	)
+	progress_label.add_theme_color_override(
+		"font_color",
+		Color(
+			0.35,
+			0.20,
+			0.14
+		)
+	)
+	progress_label.horizontal_alignment = (
+		HORIZONTAL_ALIGNMENT_CENTER
+	)
+	progress_label.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
 	progress_label.visible = false
-	dialogue_panel.add_child(progress_label)
 
+	dialogue_panel.add_child(
+		progress_label
+	)
+
+	# -------------------------------------------------
+	# Skip tutorial button
+	# -------------------------------------------------
 	skip_button = Button.new()
 	skip_button.text = "رد کردن آموزش"
 	skip_button.anchor_left = 0.82
 	skip_button.anchor_right = 0.98
 	skip_button.anchor_top = 0.02
 	skip_button.anchor_bottom = 0.075
-	skip_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	skip_button.mouse_filter = (
+		Control.MOUSE_FILTER_STOP
+	)
 	skip_button.pressed.connect(skip)
-	overlay_root.add_child(skip_button)
+
+	overlay_root.add_child(
+		skip_button
+	)
