@@ -109,6 +109,13 @@ func _on_survey_button_pressed() -> void:
 
 
 func _on_menu_button_pressed() -> void:
+	var tutorial := get_tree().get_first_node_in_group(
+		"tutorial_controller"
+	) as TutorialController
+
+	if tutorial != null and tutorial.is_active():
+		return
+
 	exit_confirmation.popup_centered(
 		Vector2i(500, 220)
 	)

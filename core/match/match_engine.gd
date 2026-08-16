@@ -314,6 +314,9 @@ func move_board_card(
 		)
 		return false
 
+	var board_before: Dictionary = \
+		_snapshot_board_cards(player)
+
 	var replaced_card: CardInstance = \
 		player.board.get_card(to_slot_id)
 
@@ -374,6 +377,14 @@ func move_board_card(
 
 	player.board_move_used_turn = \
 		state.turn_number
+
+	_record_completed_board_move(
+		player_id,
+		moving_card,
+		from_slot_id,
+		to_slot_id,
+		board_before
+	)
 
 	print(
 		"BOARD CARD MOVED | player=",
@@ -1051,6 +1062,7 @@ func _record_completed_play(
 
 	var record := CardPlayRecord.new()
 
+	record.type = CardPlayRecord.Type.PLAY_CARD
 	record.card = played_card
 	record.owner_id = player_id
 	record.slot_id = slot_id
@@ -1070,6 +1082,16 @@ func _record_completed_play(
 				previous_card
 			)
 
+	# بعضی Abilityها خود کارت تازه‌Playشده را همان لحظه از Board خارج می‌کنند.
+	# آن کارت هم باید در همان Action از نظر بصری حذف شود، نه در Cleanup آخر.
+	if not _is_card_still_on_board(
+		player,
+		played_card
+	):
+		record.removed_cards.append(
+			played_card
+		)
+
 	var stored_records: Array = \
 		play_records_by_player.get(
 			player_id,
@@ -1080,6 +1102,56 @@ func _record_completed_play(
 
 	play_records_by_player[player_id] = \
 		stored_records
+
+
+func _record_completed_board_move(
+	player_id: int,
+	moved_card: CardInstance,
+	from_slot_id: int,
+	to_slot_id: int,
+	board_before: Dictionary
+) -> void:
+	var player: PlayerState = \
+		state.get_player(player_id)
+
+	if player == null or moved_card == null:
+		return
+
+	var record := CardPlayRecord.new()
+	record.type = CardPlayRecord.Type.MOVE_BOARD_CARD
+	record.card = moved_card
+	record.owner_id = player_id
+	record.from_slot_id = from_slot_id
+	record.slot_id = to_slot_id
+
+	for raw_card: Variant in board_before.values():
+		var previous_card: CardInstance = \
+			raw_card as CardInstance
+
+		if previous_card == null:
+			continue
+
+		if previous_card == moved_card:
+			continue
+
+		if not _is_card_still_on_board(
+			player,
+			previous_card
+		):
+			record.removed_cards.append(
+				previous_card
+			)
+
+	var stored_records: Array = \
+		play_records_by_player.get(
+			player_id,
+			[]
+		)
+
+	stored_records.append(record)
+	play_records_by_player[player_id] = \
+		stored_records
+
 
 func finalize_combat_score() -> bool:
 	if state == null:

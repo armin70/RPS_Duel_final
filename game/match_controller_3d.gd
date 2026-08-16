@@ -2,6 +2,9 @@ class_name MatchController3D
 extends Node3D
 
 
+signal overlap_combat_step_finished
+
+
 const SLOT_COLLISION_MASK: int = 2
 
 
@@ -78,7 +81,25 @@ var local_player_id: int = 1
 @export_category("Bot and Reveal")
 @export var bot_think_time: float = 0.3
 @export var reveal_step_time: float = 0.3
+@export_range(0.0, 2.0, 0.05)
+var bot_action_pause: float = 0.45
 @export var reveal_drop_height: float = 0.4
+
+@export_category("Combat Animation")
+@export_range(0.0, 1.0, 0.01)
+var combat_lift_height: float = 0.38
+@export_range(0.05, 1.0, 0.01)
+var combat_lift_time: float = 0.16
+@export_range(0.05, 1.0, 0.01)
+var combat_attack_time: float = 0.12
+@export_range(0.05, 1.0, 0.01)
+var combat_return_time: float = 0.10
+@export_range(0.0, 0.5, 0.01)
+var combat_hit_pause: float = 0.03
+@export_range(0.0, 0.5, 0.01)
+var combat_attack_gap: float = 0.04
+@export_range(0.0, 1.0, 0.01)
+var combat_phase_pause: float = 0.08
 
 const MAX_KEPT_HAND_CARDS: int = 3
 const MAX_HAND_CARDS: int = 6
@@ -708,12 +729,17 @@ func _run_reveal_and_battle() -> void:
 	await get_tree().create_timer(
 		bot_think_time
 	).timeout
-	# کارت‌های Coverشده Bot درست هنگام Reveal ناپدید می‌شوند.
-	_remove_discarded_card_views()
+
+	# مهم: اینجا دیگر همه کارت‌های Discardشده را یک‌جا حذف نمی‌کنیم.
+	# هر Play حریف مسئول نمایش و حذف کارت‌های مربوط به همان اکت است؛
+	# بنابراین اکت‌ها واقعاً یکی‌یکی دیده می‌شوند.
 	await _reveal_cards_one_by_one(
 		pending_local_cards,
 		pending_bot_plays
 	)
+
+	# Cleanup نهایی فقط برای Viewهایی که به هر دلیلی رکورد Reveal نداشتند.
+	_remove_discarded_card_views()
 
 	pending_local_cards.clear()
 	pending_bot_plays.clear()
@@ -746,6 +772,13 @@ func _reveal_cards_one_by_one(
 				bot_plays[index]
 			)
 
+			# اکت بعدی Bot تا وقتی اکت فعلی کامل نشده شروع نمی‌شود.
+			# این مکث باعث می‌شود چند Play پشت سر هم یک‌جا به نظر نرسند.
+			if bot_action_pause > 0.0:
+				await get_tree().create_timer(
+					bot_action_pause
+				).timeout
+
 	await _refresh_opponent_hand_positions()
 
 func _reveal_bot_play(
@@ -757,16 +790,91 @@ func _reveal_bot_play(
 	if play_record.card == null:
 		return
 
+	if (
+		play_record.type
+		== CardPlayRecord.Type.MOVE_BOARD_CARD
+	):
+		await _reveal_bot_board_move(
+			play_record
+		)
+		return
+
 	# اول خود کارت Bot وارد زمین می‌شود.
 	await _reveal_bot_card(
 		play_record.card,
 		play_record.slot_id
 	)
 
-	# بعد افکت همان کارت نمایش داده می‌شود.
+	# بعد حذف‌ها / Coverهای مربوط به همان Play نمایش داده می‌شوند.
 	await _reveal_removed_card_views(
 		play_record.removed_cards
 	)
+
+
+func _reveal_bot_board_move(
+	play_record: CardPlayRecord
+) -> void:
+	if play_record == null or play_record.card == null:
+		return
+
+	var card_view := card_views.get(
+		play_record.card.instance_id,
+		null
+	) as Card3D
+
+	if card_view == null:
+		return
+
+	var target_place: CardPlace3D = \
+		game_layout.get_board_place(
+			bot_player_id,
+			play_record.slot_id
+		)
+
+	if target_place == null:
+		return
+
+	# اگر Move روی یک کارت دیگر Cover شده، اول همان کارت کنار می‌رود.
+	await _reveal_removed_card_views(
+		play_record.removed_cards
+	)
+
+	var target_transform: Transform3D = \
+		target_place.card_anchor.global_transform
+	var start_position: Vector3 = \
+		card_view.global_position
+	var target_position: Vector3 = \
+		target_transform.origin
+	var middle_position: Vector3 = (
+		(start_position + target_position) / 2.0
+		+ Vector3.UP * reveal_drop_height
+	)
+
+	var tween: Tween = create_tween()
+	tween.tween_property(
+		card_view,
+		"global_position",
+		middle_position,
+		reveal_step_time * 0.45
+	).set_trans(
+		Tween.TRANS_QUAD
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	tween.tween_property(
+		card_view,
+		"global_transform",
+		target_transform,
+		reveal_step_time * 0.55
+	).set_trans(
+		Tween.TRANS_QUAD
+	).set_ease(
+		Tween.EASE_IN
+	)
+
+	await tween.finished
+	card_view.move_home(target_transform)
 
 func _pulse_existing_card(
 	card: CardInstance
@@ -2055,20 +2163,14 @@ func _start_animated_combat() -> void:
 		sequence.acts.size()
 	)
 
-	while sequence.has_next():
-		var act: BattleAct = sequence.get_next()
-
-		if act == null:
-			continue
-
-		await _animate_battle_act(act)
-		engine.apply_battle_act(act)
-		_refresh_board_shield_visuals()
-		_refresh_battle_scores()
-
-		await get_tree().create_timer(
-			0.25
-		).timeout
+	# Combat is presented in three fast visual phases:
+	# 1) Both players attack the Dealer together.
+	# 2) Front-row PvP clashes.
+	# 3) Back-row PvP clashes.
+	#
+	# BattleResolver still owns all combat rules. This controller only groups
+	# the already-created BattleActs so the animation is faster and clearer.
+	await _play_grouped_combat_sequence(sequence)
 
 	# تمام Clashهای هر دو بازیکن کامل محاسبه شده‌اند.
 	# حالا برای اولین بار اختلاف نهایی را بررسی می‌کنیم.
@@ -2125,6 +2227,713 @@ func _start_animated_combat() -> void:
 
 	if tutorial_controller != null and tutorial_controller.is_active():
 		tutorial_controller.notify_combat_finished()
+
+
+func _play_grouped_combat_sequence(
+	sequence: BattleSequence
+) -> void:
+	if sequence == null:
+		return
+
+	var acts: Array[BattleAct] = sequence.acts
+
+	# Dealer combat is now split by row:
+	# FRONT rises/attacks/returns first, then BACK does the same.
+	await _play_dealer_row_combat_phase(
+		acts,
+		SlotID.Row.FRONT
+	)
+
+	if combat_phase_pause > 0.0:
+		await get_tree().create_timer(
+			combat_phase_pause
+		).timeout
+
+	await _play_dealer_row_combat_phase(
+		acts,
+		SlotID.Row.BACK
+	)
+
+	if combat_phase_pause > 0.0:
+		await get_tree().create_timer(
+			combat_phase_pause
+		).timeout
+
+	# PvP follows the same front-then-back presentation.
+	await _play_pvp_row_combat_phase(
+		acts,
+		SlotID.Row.FRONT
+	)
+
+	if combat_phase_pause > 0.0:
+		await get_tree().create_timer(
+			combat_phase_pause
+		).timeout
+
+	await _play_pvp_row_combat_phase(
+		acts,
+		SlotID.Row.BACK
+	)
+
+	# Safety net for future BattleAct types.
+	for act: BattleAct in acts:
+		if act == null:
+			continue
+
+		if act.resolved:
+			continue
+
+		await _animate_battle_act(act)
+		engine.apply_battle_act(act)
+		_refresh_board_shield_visuals()
+		_refresh_battle_scores()
+
+
+func _play_dealer_row_combat_phase(
+	acts: Array[BattleAct],
+	row: int
+) -> void:
+	var row_dealer_acts: Array[BattleAct] = []
+
+	for act: BattleAct in acts:
+		if act == null:
+			continue
+
+		if not (
+			act.type in [
+				BattleAct.Type.PLAYER_VS_DEALER,
+				BattleAct.Type.MUSTACHE_SWEEP,
+				BattleAct.Type.CHAINSAW_SWEEP
+			]
+		):
+			continue
+
+		if not SlotID.is_valid(act.attacker_slot_id):
+			continue
+
+		if SlotID.get_row(act.attacker_slot_id) != row:
+			continue
+
+		row_dealer_acts.append(act)
+
+	if row_dealer_acts.is_empty():
+		return
+
+	# All participating cards in THIS row rise together.
+	var original_positions: Dictionary = await _lift_cards_for_acts(
+		row_dealer_acts,
+		false
+	)
+
+	var regular_waves: Array = \
+		_build_dealer_regular_waves_for_row(
+			row_dealer_acts,
+			row
+		)
+
+	# Schedule regular attacks with real overlap.
+	# Different cards can start before the previous attack has returned.
+	# A card that is used again (important in the middle lane) is locked until
+	# its previous attack cycle has finished.
+	await _play_overlapped_dealer_waves(
+		regular_waves
+	)
+
+	# Special sweep acts keep their dedicated VFX sequence. They are still
+	# row-scoped, but are not mixed into overlapping position tweens because
+	# they can move several cards at once.
+	for special_act: BattleAct in row_dealer_acts:
+		if special_act == null or special_act.resolved:
+			continue
+
+		if (
+			special_act.type != BattleAct.Type.MUSTACHE_SWEEP
+			and special_act.type != BattleAct.Type.CHAINSAW_SWEEP
+		):
+			continue
+
+		await _animate_battle_act(special_act)
+		engine.apply_battle_act(special_act)
+		_refresh_board_shield_visuals()
+		_refresh_battle_scores()
+
+	await _restore_lifted_cards(original_positions)
+
+
+func _build_dealer_regular_waves_for_row(
+	acts: Array[BattleAct],
+	row: int
+) -> Array:
+	var waves: Array = []
+	var row_slots: Array[int] = _get_board_slots_for_row(row)
+
+	# First pass: one target per card. This lets LEFT, MIDDLE and RIGHT attacks
+	# overlap visibly instead of waiting for a complete attack-return cycle.
+	for slot_id: int in row_slots:
+		var targets: Array[int] = \
+			_get_dealer_targets_for_board_slot(slot_id)
+
+		if targets.is_empty():
+			continue
+
+		var first_wave: Array[BattleAct] = \
+			_collect_dealer_wave(
+				acts,
+				slot_id,
+				targets[0]
+			)
+
+		if not first_wave.is_empty():
+			waves.append(first_wave)
+
+	# Second pass: only middle cards have a second Dealer target.
+	# The overlap scheduler below knows these cards are reused and waits just
+	# long enough for that specific card to be free again.
+	for slot_id: int in row_slots:
+		var targets: Array[int] = \
+			_get_dealer_targets_for_board_slot(slot_id)
+
+		if targets.size() < 2:
+			continue
+
+		var second_wave: Array[BattleAct] = \
+			_collect_dealer_wave(
+				acts,
+				slot_id,
+				targets[1]
+			)
+
+		if not second_wave.is_empty():
+			waves.append(second_wave)
+
+	return waves
+
+
+func _collect_dealer_wave(
+	acts: Array[BattleAct],
+	slot_id: int,
+	dealer_slot_id: int
+) -> Array[BattleAct]:
+	var wave: Array[BattleAct] = []
+
+	for act: BattleAct in acts:
+		if act == null or act.resolved:
+			continue
+
+		if act.type != BattleAct.Type.PLAYER_VS_DEALER:
+			continue
+
+		if act.attacker_slot_id != slot_id:
+			continue
+
+		if act.dealer_slot_id != dealer_slot_id:
+			continue
+
+		# Same board slot + same Dealer target means P1 and P2 can attack
+		# together in the same visual wave.
+		wave.append(act)
+
+	return wave
+
+
+func _play_overlapped_dealer_waves(
+	waves: Array
+) -> void:
+	if waves.is_empty():
+		return
+
+	var available_at: Dictionary = {}
+	var schedules: Array[Dictionary] = []
+	var base_start: float = 0.0
+	var cycle_time: float = _get_regular_attack_cycle_time()
+
+	for wave_variant: Array in waves:
+		var wave: Array[BattleAct] = []
+		wave.assign(wave_variant)
+
+		if wave.is_empty():
+			continue
+
+		var start_at: float = base_start
+
+		for act: BattleAct in wave:
+			if act == null or act.attacker == null:
+				continue
+
+			var attacker_id: int = act.attacker.instance_id
+			start_at = maxf(
+				start_at,
+				float(available_at.get(attacker_id, 0.0))
+			)
+
+		for act: BattleAct in wave:
+			if act == null or act.attacker == null:
+				continue
+
+			available_at[act.attacker.instance_id] = \
+				start_at + cycle_time
+
+		schedules.append({
+			"wave": wave,
+			"delay": start_at
+		})
+
+		# This is a START gap, not a "wait until animation finished" gap.
+		base_start += combat_attack_gap
+
+	if schedules.is_empty():
+		return
+
+	var tracker: Dictionary = {
+		"remaining": schedules.size()
+	}
+
+	for schedule: Dictionary in schedules:
+		var scheduled_wave: Array[BattleAct] = []
+		scheduled_wave.assign(
+			schedule.get("wave", [])
+		)
+
+		var delay: float = float(
+			schedule.get("delay", 0.0)
+		)
+
+		_run_dealer_wave_overlapped(
+			scheduled_wave,
+			delay,
+			tracker
+		)
+
+	await _wait_for_overlap_tracker(tracker)
+
+
+func _run_dealer_wave_overlapped(
+	wave: Array[BattleAct],
+	delay: float,
+	tracker: Dictionary
+) -> void:
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+
+	await _animate_player_vs_dealer_wave(wave)
+
+	for act: BattleAct in wave:
+		if act == null or act.resolved:
+			continue
+
+		engine.apply_battle_act(act)
+
+	_refresh_board_shield_visuals()
+	_refresh_battle_scores()
+	_finish_overlap_tracker_step(tracker)
+
+
+func _play_pvp_row_combat_phase(
+	acts: Array[BattleAct],
+	row: int
+) -> void:
+	var row_acts: Array[BattleAct] = []
+
+	for act: BattleAct in acts:
+		if act == null:
+			continue
+
+		if act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+			continue
+
+		if not SlotID.is_valid(act.attacker_slot_id):
+			continue
+
+		if SlotID.get_row(act.attacker_slot_id) != row:
+			continue
+
+		row_acts.append(act)
+
+	if row_acts.is_empty():
+		return
+
+	# All cards involved in this PvP row rise together first.
+	var original_positions: Dictionary = await _lift_cards_for_acts(
+		row_acts,
+		true
+	)
+
+	# Real overlap with collision-safe scheduling:
+	# independent clashes are staggered by combat_attack_gap, but if a middle
+	# card appears in another clash, that specific clash waits for the card.
+	await _play_overlapped_pvp_acts(row_acts)
+
+	await _restore_lifted_cards(original_positions)
+
+
+func _play_overlapped_pvp_acts(
+	acts: Array[BattleAct]
+) -> void:
+	if acts.is_empty():
+		return
+
+	var available_at: Dictionary = {}
+	var schedules: Array[Dictionary] = []
+	var base_start: float = 0.0
+	var cycle_time: float = _get_regular_attack_cycle_time()
+
+	for act: BattleAct in acts:
+		if act == null or act.resolved:
+			continue
+
+		if act.attacker == null or act.defender == null:
+			continue
+
+		var start_at: float = base_start
+		var attacker_id: int = act.attacker.instance_id
+		var defender_id: int = act.defender.instance_id
+
+		start_at = maxf(
+			start_at,
+			float(available_at.get(attacker_id, 0.0))
+		)
+		start_at = maxf(
+			start_at,
+			float(available_at.get(defender_id, 0.0))
+		)
+
+		available_at[attacker_id] = start_at + cycle_time
+		available_at[defender_id] = start_at + cycle_time
+
+		schedules.append({
+			"act": act,
+			"delay": start_at
+		})
+
+		base_start += combat_attack_gap
+
+	if schedules.is_empty():
+		return
+
+	var tracker: Dictionary = {
+		"remaining": schedules.size()
+	}
+
+	for schedule: Dictionary in schedules:
+		var scheduled_act := schedule.get(
+			"act",
+			null
+		) as BattleAct
+
+		if scheduled_act == null:
+			_finish_overlap_tracker_step(tracker)
+			continue
+
+		var delay: float = float(
+			schedule.get("delay", 0.0)
+		)
+
+		_run_pvp_act_overlapped(
+			scheduled_act,
+			delay,
+			tracker
+		)
+
+	await _wait_for_overlap_tracker(tracker)
+
+
+func _run_pvp_act_overlapped(
+	act: BattleAct,
+	delay: float,
+	tracker: Dictionary
+) -> void:
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+
+	await _animate_player_clash(act)
+
+	if not act.resolved:
+		engine.apply_battle_act(act)
+
+	_refresh_board_shield_visuals()
+	_refresh_battle_scores()
+	_finish_overlap_tracker_step(tracker)
+
+
+func _wait_for_overlap_tracker(
+	tracker: Dictionary
+) -> void:
+	while int(tracker.get("remaining", 0)) > 0:
+		await overlap_combat_step_finished
+
+
+func _finish_overlap_tracker_step(
+	tracker: Dictionary
+) -> void:
+	var remaining: int = max(
+		0,
+		int(tracker.get("remaining", 0)) - 1
+	)
+
+	tracker["remaining"] = remaining
+	overlap_combat_step_finished.emit()
+
+
+func _get_regular_attack_cycle_time() -> float:
+	return (
+		combat_attack_time
+		+ combat_hit_pause
+		+ combat_return_time
+	)
+
+
+func _get_board_slots_for_row(
+	row: int
+) -> Array[int]:
+	if row == SlotID.Row.FRONT:
+		return [
+			SlotID.Type.FRONT_LEFT,
+			SlotID.Type.FRONT_MIDDLE_0,
+			SlotID.Type.FRONT_MIDDLE_1,
+			SlotID.Type.FRONT_RIGHT
+		]
+
+	return [
+		SlotID.Type.BACK_LEFT,
+		SlotID.Type.BACK_MIDDLE_0,
+		SlotID.Type.BACK_MIDDLE_1,
+		SlotID.Type.BACK_RIGHT
+	]
+
+
+func _get_dealer_targets_for_board_slot(
+	slot_id: int
+) -> Array[int]:
+	match slot_id:
+		SlotID.Type.FRONT_LEFT, SlotID.Type.BACK_LEFT:
+			return [DealerSlotID.Type.LEFT]
+
+		SlotID.Type.FRONT_RIGHT, SlotID.Type.BACK_RIGHT:
+			return [DealerSlotID.Type.RIGHT]
+
+		SlotID.Type.FRONT_MIDDLE_0, \
+		SlotID.Type.FRONT_MIDDLE_1, \
+		SlotID.Type.BACK_MIDDLE_0, \
+		SlotID.Type.BACK_MIDDLE_1:
+			# Middle is intentionally different: each player middle card
+			# attacks both Dealer middle cards.
+			return [
+				DealerSlotID.Type.MIDDLE_0,
+				DealerSlotID.Type.MIDDLE_1
+			]
+
+	return []
+
+
+func _lift_cards_for_acts(
+	acts: Array[BattleAct],
+	include_defenders: bool
+) -> Dictionary:
+	var original_positions: Dictionary = {}
+	var views_to_lift: Array[Card3D] = []
+
+	for act: BattleAct in acts:
+		if act == null:
+			continue
+
+		var cards: Array[CardInstance] = []
+
+		if act.attacker != null:
+			cards.append(act.attacker)
+
+		if include_defenders and act.defender != null:
+			cards.append(act.defender)
+
+		for card: CardInstance in cards:
+			if card == null:
+				continue
+
+			if original_positions.has(card.instance_id):
+				continue
+
+			var card_view := card_views.get(
+				card.instance_id,
+				null
+			) as Card3D
+
+			if card_view == null:
+				continue
+
+			if not is_instance_valid(card_view):
+				continue
+
+			original_positions[card.instance_id] = \
+				card_view.global_position
+			views_to_lift.append(card_view)
+
+	if views_to_lift.is_empty():
+		return original_positions
+
+	var lift_tween: Tween = create_tween()
+	lift_tween.set_parallel(true)
+
+	for card_view: Card3D in views_to_lift:
+		if not is_instance_valid(card_view):
+			continue
+
+		var lifted_position: Vector3 = \
+			card_view.global_position + Vector3.UP * combat_lift_height
+
+		lift_tween.tween_property(
+			card_view,
+			"global_position",
+			lifted_position,
+			combat_lift_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_OUT
+		)
+
+	await lift_tween.finished
+	return original_positions
+
+
+func _restore_lifted_cards(
+	original_positions: Dictionary
+) -> void:
+	if original_positions.is_empty():
+		return
+
+	var return_tween: Tween = create_tween()
+	return_tween.set_parallel(true)
+	var has_valid_view: bool = false
+
+	for raw_instance_id: Variant in original_positions.keys():
+		var instance_id: int = int(raw_instance_id)
+		var card_view := card_views.get(
+			instance_id,
+			null
+		) as Card3D
+
+		if card_view == null:
+			continue
+
+		if not is_instance_valid(card_view):
+			continue
+
+		has_valid_view = true
+		return_tween.tween_property(
+			card_view,
+			"global_position",
+			original_positions[raw_instance_id],
+			combat_lift_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_IN
+		)
+
+	if has_valid_view:
+		await return_tween.finished
+
+
+func _animate_player_vs_dealer_wave(
+	wave: Array[BattleAct]
+) -> void:
+	if wave.is_empty():
+		return
+
+	var start_positions: Dictionary = {}
+	var valid_acts: Array[BattleAct] = []
+	var attack_tween: Tween = create_tween()
+	attack_tween.set_parallel(true)
+
+	for act: BattleAct in wave:
+		if act == null:
+			continue
+
+		if act.attacker == null or act.defender == null:
+			continue
+
+		var attacker_view := card_views.get(
+			act.attacker.instance_id,
+			null
+		) as Card3D
+
+		var dealer_view := card_views.get(
+			act.defender.instance_id,
+			null
+		) as Card3D
+
+		if attacker_view == null or dealer_view == null:
+			continue
+
+		if not is_instance_valid(attacker_view):
+			continue
+
+		if not is_instance_valid(dealer_view):
+			continue
+
+		var attacker_start: Vector3 = \
+			attacker_view.global_position
+		var dealer_position: Vector3 = \
+			dealer_view.global_position
+
+		# Each player approaches the Dealer from its own current position, so
+		# parallel attacks do not collapse into exactly the same point.
+		var hit_position: Vector3 = dealer_position.lerp(
+			attacker_start,
+			0.15
+		)
+		hit_position.y += 0.12
+
+		start_positions[act.attacker.instance_id] = attacker_start
+		valid_acts.append(act)
+
+		attack_tween.tween_property(
+			attacker_view,
+			"global_position",
+			hit_position,
+			combat_attack_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_IN
+		)
+
+	if valid_acts.is_empty():
+		return
+
+	await attack_tween.finished
+
+	if combat_hit_pause > 0.0:
+		await get_tree().create_timer(
+			combat_hit_pause
+		).timeout
+
+	var return_tween: Tween = create_tween()
+	return_tween.set_parallel(true)
+
+	for act: BattleAct in valid_acts:
+		var attacker_view := card_views.get(
+			act.attacker.instance_id,
+			null
+		) as Card3D
+
+		if attacker_view == null:
+			continue
+
+		if not is_instance_valid(attacker_view):
+			continue
+
+		return_tween.tween_property(
+			attacker_view,
+			"global_position",
+			start_positions[act.attacker.instance_id],
+			combat_return_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_OUT
+		)
+
+	await return_tween.finished
 
 
 func _take_selected_cards_from_local_hand() -> Array[CardInstance]:
@@ -2491,7 +3300,7 @@ func _animate_player_vs_dealer(
 		attacker_view,
 		"global_position",
 		hit_position,
-		0.28
+		combat_attack_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(
@@ -2501,7 +3310,7 @@ func _animate_player_vs_dealer(
 	await attack_tween.finished
 
 	await get_tree().create_timer(
-		0.10
+		combat_hit_pause
 	).timeout
 
 	var return_tween: Tween = create_tween()
@@ -2510,7 +3319,7 @@ func _animate_player_vs_dealer(
 		attacker_view,
 		"global_position",
 		attacker_start,
-		0.28
+		combat_return_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(
@@ -2565,7 +3374,9 @@ func _animate_player_clash(
 		first_start + second_start
 	) * 0.5
 
-	clash_center.y += 0.35
+	# Cards are already lifted before the PvP phase, so the clash only needs
+	# a small extra rise instead of the old large jump.
+	clash_center.y += 0.12
 
 	var direction: Vector3 = \
 		second_start - first_start
@@ -2588,7 +3399,7 @@ func _animate_player_clash(
 		first_view,
 		"global_position",
 		first_target,
-		0.32
+		combat_attack_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(
@@ -2599,7 +3410,7 @@ func _animate_player_clash(
 		second_view,
 		"global_position",
 		second_target,
-		0.32
+		combat_attack_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(
@@ -2609,7 +3420,7 @@ func _animate_player_clash(
 	await clash_tween.finished
 
 	await get_tree().create_timer(
-		0.15
+		combat_hit_pause
 	).timeout
 
 	var return_tween: Tween = create_tween()
@@ -2619,7 +3430,7 @@ func _animate_player_clash(
 		first_view,
 		"global_position",
 		first_start,
-		0.32
+		combat_return_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(
@@ -2630,7 +3441,7 @@ func _animate_player_clash(
 		second_view,
 		"global_position",
 		second_start,
-		0.32
+		combat_return_time
 	).set_trans(
 		Tween.TRANS_QUAD
 	).set_ease(

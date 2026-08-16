@@ -153,6 +153,7 @@ var card_preview_panel: Panel
 
 func setup(controller: MatchController3D) -> void:
 	match_controller = controller
+	add_to_group("tutorial_controller")
 	layer = 100
 	_build_ui()
 	set_process(true)
