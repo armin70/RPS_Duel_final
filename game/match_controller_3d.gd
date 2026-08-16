@@ -3,9 +3,25 @@ extends Node3D
 
 
 signal overlap_combat_step_finished
+signal combat_result_vfx_finished
 
 
 const SLOT_COLLISION_MASK: int = 2
+const CARD_DETAIL_OVERLAY_SCRIPT: Script = preload(
+	"res://game/ui/card_detail_overlay.gd"
+)
+const COMBAT_RESULT_VFX_SCRIPT: Script = preload(
+	"res://game/vfx/combat_result_vfx_3d.gd"
+)
+const DEFAULT_WIN_RESULT_FRAMES: SpriteFrames = preload(
+	"res://data/vfx/combat_result_win_frames.tres"
+)
+const DEFAULT_LOSS_RESULT_FRAMES: SpriteFrames = preload(
+	"res://data/vfx/combat_result_loss_frames.tres"
+)
+const DEFAULT_DRAW_RESULT_FRAMES: SpriteFrames = preload(
+	"res://data/vfx/combat_result_draw_frames.tres"
+)
 
 
 @export_category("VFX")
@@ -101,6 +117,31 @@ var combat_attack_gap: float = 0.04
 @export_range(0.0, 1.0, 0.01)
 var combat_phase_pause: float = 0.08
 
+# Dealer combat intentionally uses a different visual language than PvP:
+# attackers travel almost all the way to the Dealer card, and the Dealer
+# card reacts to the impact. PvP still meets around the midpoint.
+@export_range(0.0, 0.3, 0.01)
+var dealer_attack_stop_ratio: float = 0.05
+@export_range(0.0, 0.5, 0.01)
+var dealer_recoil_distance: float = 0.10
+@export_range(0.0, 0.5, 0.01)
+var dealer_recoil_height: float = 0.08
+@export_range(0.01, 0.5, 0.01)
+var dealer_recoil_out_time: float = 0.06
+@export_range(0.01, 0.5, 0.01)
+var dealer_recoil_return_time: float = 0.08
+
+@export_category("Combat Result VFX")
+@export var win_result_frames: SpriteFrames = DEFAULT_WIN_RESULT_FRAMES
+@export var loss_result_frames: SpriteFrames = DEFAULT_LOSS_RESULT_FRAMES
+@export var draw_result_frames: SpriteFrames = DEFAULT_DRAW_RESULT_FRAMES
+@export var result_animation_name: StringName = &"default"
+@export var result_local_offset: Vector3 = Vector3(0.0, 0.58, 0.0)
+@export_range(0.0001, 0.01, 0.0001)
+var result_pixel_size: float = 0.0012
+@export_range(0.05, 2.0, 0.05)
+var result_loop_fallback_duration: float = 0.35
+
 const MAX_KEPT_HAND_CARDS: int = 3
 const MAX_HAND_CARDS: int = 6
 const TAP_DRAG_THRESHOLD: float = 18.0
@@ -125,6 +166,7 @@ var pending_bot_plays: Array[CardPlayRecord] = []
 var deck_selection_active: bool = false
 var deck_choice_cards: Array[Card3D] = []
 var tutorial_controller: TutorialController
+var card_detail_overlay: CardDetailOverlay
 
 
 func _ready() -> void:
@@ -136,6 +178,8 @@ func _ready() -> void:
 
 	if not _resources_are_valid():
 		return
+
+	_ensure_card_detail_overlay()
 
 	bot_player_id = 2 if local_player_id == 1 else 1
 
@@ -149,6 +193,26 @@ func _ready() -> void:
 	)
 
 	print("Waiting for player deck selection.")
+
+
+func _ensure_card_detail_overlay() -> void:
+	if is_instance_valid(card_detail_overlay):
+		return
+
+	if not is_instance_valid(hud):
+		return
+
+	card_detail_overlay = \
+		CARD_DETAIL_OVERLAY_SCRIPT.new() as CardDetailOverlay
+
+	if card_detail_overlay == null:
+		push_error(
+			"Could not create CardDetailOverlay."
+		)
+		return
+
+	card_detail_overlay.name = "CardDetailOverlay"
+	hud.add_child(card_detail_overlay)
 
 
 func _ensure_vfx_manager() -> void:
@@ -1331,10 +1395,51 @@ func _create_card_view(
 		face_up
 	)
 
+	card_view.inspect_requested.connect(
+		Callable(
+			self,
+			"_on_card_inspect_requested"
+		)
+	)
+
 	if register_as_main_view:
 		card_views[card.instance_id] = card_view
 
 	return card_view
+
+func _on_card_inspect_requested(
+	card_view: Card3D
+) -> void:
+	if card_view == null:
+		return
+
+	if not is_instance_valid(card_view):
+		return
+
+	# Never expose a face-down opponent card.
+	if not card_view.is_face_up:
+		return
+
+	if card_view.card_instance == null:
+		return
+
+	# A hold starts from the same press as a possible drag.
+	# If the hold wins before the drag threshold, cancel the drag cleanly.
+	if dragged_card == card_view:
+		card_view.return_home()
+		dragged_card = null
+		pointer_has_dragged = false
+
+	_ensure_card_detail_overlay()
+
+	if not is_instance_valid(card_detail_overlay):
+		return
+
+	card_detail_overlay.show_card(
+		card_view.card_instance,
+		card_view.is_disabled
+	)
+
 
 func _start_card_drag(
 	card_view: Card3D,
@@ -2466,12 +2571,44 @@ func _play_overlapped_dealer_waves(
 				float(available_at.get(attacker_id, 0.0))
 			)
 
+			# A Dealer card may be targeted by several middle-lane attacks.
+			# Do not start a second impact on that exact Dealer until its short
+			# recoil has recovered; attacks on other Dealer cards still overlap.
+			if act.defender != null:
+				var dealer_id: int = act.defender.instance_id
+				start_at = maxf(
+					start_at,
+					float(available_at.get(dealer_id, 0.0))
+				)
+
 		for act: BattleAct in wave:
 			if act == null or act.attacker == null:
 				continue
 
+			var attacker_lock_time: float = cycle_time
+
+			if act.attacker_owner_id == local_player_id:
+				attacker_lock_time = maxf(
+					attacker_lock_time,
+					combat_attack_time
+					+ _get_result_vfx_duration(
+						act.attacker_outcome
+					)
+				)
+
 			available_at[act.attacker.instance_id] = \
-				start_at + cycle_time
+				start_at + attacker_lock_time
+
+			if act.defender != null:
+				available_at[act.defender.instance_id] = maxf(
+					float(available_at.get(
+						act.defender.instance_id,
+						0.0
+					)),
+					start_at
+					+ dealer_recoil_out_time
+					+ dealer_recoil_return_time
+				)
 
 		schedules.append({
 			"wave": wave,
@@ -2597,8 +2734,31 @@ func _play_overlapped_pvp_acts(
 			float(available_at.get(defender_id, 0.0))
 		)
 
-		available_at[attacker_id] = start_at + cycle_time
-		available_at[defender_id] = start_at + cycle_time
+		var attacker_lock_time: float = cycle_time
+		var defender_lock_time: float = cycle_time
+
+		if act.attacker_owner_id == local_player_id:
+			attacker_lock_time = maxf(
+				attacker_lock_time,
+				combat_attack_time
+				+ _get_result_vfx_duration(
+					act.attacker_outcome
+				)
+			)
+
+		if act.defender_owner_id == local_player_id:
+			defender_lock_time = maxf(
+				defender_lock_time,
+				combat_attack_time
+				+ _get_result_vfx_duration(
+					act.defender_outcome
+				)
+			)
+
+		available_at[attacker_id] = \
+			start_at + attacker_lock_time
+		available_at[defender_id] = \
+			start_at + defender_lock_time
 
 		schedules.append({
 			"act": act,
@@ -2875,13 +3035,13 @@ func _animate_player_vs_dealer_wave(
 		var dealer_position: Vector3 = \
 			dealer_view.global_position
 
-		# Each player approaches the Dealer from its own current position, so
-		# parallel attacks do not collapse into exactly the same point.
+		# Dealer combat must read as an attack ON the Dealer, not as a PvP
+		# midpoint clash. Stop almost on top of the Dealer card.
 		var hit_position: Vector3 = dealer_position.lerp(
 			attacker_start,
-			0.15
+			dealer_attack_stop_ratio
 		)
-		hit_position.y += 0.12
+		hit_position.y += 0.10
 
 		start_positions[act.attacker.instance_id] = attacker_start
 		valid_acts.append(act)
@@ -2901,6 +3061,15 @@ func _animate_player_vs_dealer_wave(
 		return
 
 	await attack_tween.finished
+
+	# Make the Dealer visibly absorb the hit. This is the key visual
+	# distinction from PvP, where both player cards travel to a midpoint.
+	_start_dealer_hit_reactions(valid_acts, start_positions)
+
+	# The local player's WIN / LOSS / DRAW pops at the hit moment.
+	# It keeps playing while the card returns, so combat stays fast.
+	var result_tracker: Dictionary = \
+		_start_local_result_vfx_for_acts(valid_acts)
 
 	if combat_hit_pause > 0.0:
 		await get_tree().create_timer(
@@ -2934,6 +3103,102 @@ func _animate_player_vs_dealer_wave(
 		)
 
 	await return_tween.finished
+
+	# If the Dealer recoil is a hair longer than the attacker return, finish
+	# that impact before this wave reports itself complete.
+	var dealer_reaction_remaining: float = maxf(
+		0.0,
+		dealer_recoil_out_time
+		+ dealer_recoil_return_time
+		- combat_hit_pause
+		- combat_return_time
+	)
+	if dealer_reaction_remaining > 0.0:
+		await get_tree().create_timer(dealer_reaction_remaining).timeout
+
+	await _wait_for_result_vfx_tracker(result_tracker)
+
+
+func _start_dealer_hit_reactions(
+	acts: Array[BattleAct],
+	attacker_start_positions: Dictionary
+) -> void:
+	var processed_dealers: Dictionary = {}
+
+	for act: BattleAct in acts:
+		if act == null or act.defender == null:
+			continue
+
+		var dealer_id: int = act.defender.instance_id
+		if processed_dealers.has(dealer_id):
+			continue
+		processed_dealers[dealer_id] = true
+
+		var dealer_view := card_views.get(
+			dealer_id,
+			null
+		) as Card3D
+		if dealer_view == null or not is_instance_valid(dealer_view):
+			continue
+
+		var dealer_start: Vector3 = dealer_view.global_position
+		var away_vector: Vector3 = Vector3.ZERO
+
+		# Average the incoming attack directions. If P1 and P2 hit the same
+		# Dealer from opposite sides, horizontal recoil cancels naturally but
+		# the upward pop still makes the impact obvious.
+		for source_act: BattleAct in acts:
+			if source_act == null or source_act.defender == null:
+				continue
+			if source_act.defender.instance_id != dealer_id:
+				continue
+			if source_act.attacker == null:
+				continue
+
+			var attacker_start_variant: Variant = attacker_start_positions.get(
+				source_act.attacker.instance_id,
+				null
+			)
+			if attacker_start_variant == null:
+				continue
+
+			var attacker_start: Vector3 = attacker_start_variant
+			var incoming_away: Vector3 = dealer_start - attacker_start
+			incoming_away.y = 0.0
+			if incoming_away.length_squared() > 0.0001:
+				away_vector += incoming_away.normalized()
+
+		if away_vector.length_squared() > 0.0001:
+			away_vector = away_vector.normalized()
+
+		var recoil_target: Vector3 = dealer_start
+		recoil_target += away_vector * dealer_recoil_distance
+		recoil_target += Vector3.UP * dealer_recoil_height
+
+		var reaction_tween: Tween = create_tween()
+		reaction_tween.tween_property(
+			dealer_view,
+			"global_position",
+			recoil_target,
+			dealer_recoil_out_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_OUT
+		)
+
+		reaction_tween.tween_property(
+			dealer_view,
+			"global_position",
+			dealer_start,
+			dealer_recoil_return_time
+		).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(
+			Tween.EASE_IN
+		)
+
+
 
 
 func _take_selected_cards_from_local_hand() -> Array[CardInstance]:
@@ -3035,10 +3300,13 @@ func _animate_battle_act(
 			await _play_mustache_card_sequence(
 				act
 			)
+			await _play_local_result_vfx_for_act(act)
+
 		BattleAct.Type.CHAINSAW_SWEEP:
 			await _play_card_ability_vfx_for_act(
 				act
 			)
+			await _play_local_result_vfx_for_act(act)
 
 
 func _play_mustache_card_sequence(
@@ -3289,10 +3557,10 @@ func _animate_player_vs_dealer(
 
 	var hit_position: Vector3 = dealer_position.lerp(
 		attacker_start,
-		0.15
+		dealer_attack_stop_ratio
 	)
 
-	hit_position.y += 0.15
+	hit_position.y += 0.10
 
 	var attack_tween: Tween = create_tween()
 
@@ -3308,6 +3576,14 @@ func _animate_player_vs_dealer(
 	)
 
 	await attack_tween.finished
+
+	var fallback_positions: Dictionary = {
+		act.attacker.instance_id: attacker_start
+	}
+	_start_dealer_hit_reactions([act], fallback_positions)
+
+	var result_tracker: Dictionary = \
+		_start_local_result_vfx_for_act(act)
 
 	await get_tree().create_timer(
 		combat_hit_pause
@@ -3327,6 +3603,18 @@ func _animate_player_vs_dealer(
 	)
 
 	await return_tween.finished
+
+	var dealer_reaction_remaining: float = maxf(
+		0.0,
+		dealer_recoil_out_time
+		+ dealer_recoil_return_time
+		- combat_hit_pause
+		- combat_return_time
+	)
+	if dealer_reaction_remaining > 0.0:
+		await get_tree().create_timer(dealer_reaction_remaining).timeout
+
+	await _wait_for_result_vfx_tracker(result_tracker)
 
 func _animate_player_clash(
 	act: BattleAct
@@ -3419,6 +3707,9 @@ func _animate_player_clash(
 
 	await clash_tween.finished
 
+	var result_tracker: Dictionary = \
+		_start_local_result_vfx_for_act(act)
+
 	await get_tree().create_timer(
 		combat_hit_pause
 	).timeout
@@ -3449,6 +3740,225 @@ func _animate_player_clash(
 	)
 
 	await return_tween.finished
+	await _wait_for_result_vfx_tracker(result_tracker)
+
+func _start_local_result_vfx_for_act(
+	act: BattleAct
+) -> Dictionary:
+	var acts: Array[BattleAct] = []
+	acts.append(act)
+	return _start_local_result_vfx_for_acts(acts)
+
+
+func _start_local_result_vfx_for_acts(
+	acts: Array[BattleAct]
+) -> Dictionary:
+	var tracker: Dictionary = {
+		"remaining": 0
+	}
+
+	for act: BattleAct in acts:
+		var result_data: Dictionary = \
+			_get_local_result_data(act)
+
+		if result_data.is_empty():
+			continue
+
+		var card := result_data.get(
+			"card",
+			null
+		) as CardInstance
+		var outcome: int = int(
+			result_data.get(
+				"outcome",
+				BattleAct.Outcome.TIE
+			)
+		)
+
+		if card == null:
+			continue
+
+		var frames: SpriteFrames = \
+			_get_result_frames(outcome)
+
+		if frames == null:
+			continue
+
+		var card_view := card_views.get(
+			card.instance_id,
+			null
+		) as Card3D
+
+		if card_view == null:
+			continue
+
+		if not is_instance_valid(card_view):
+			continue
+
+		tracker["remaining"] = \
+			int(tracker.get("remaining", 0)) + 1
+
+		_run_local_result_vfx(
+			card_view,
+			frames,
+			tracker
+		)
+
+	return tracker
+
+
+func _play_local_result_vfx_for_act(
+	act: BattleAct
+) -> void:
+	var tracker: Dictionary = \
+		_start_local_result_vfx_for_act(act)
+
+	await _wait_for_result_vfx_tracker(tracker)
+
+
+func _run_local_result_vfx(
+	card_view: Card3D,
+	frames: SpriteFrames,
+	tracker: Dictionary
+) -> void:
+	if card_view == null or not is_instance_valid(card_view):
+		_finish_result_vfx_tracker_step(tracker)
+		return
+
+	var result_vfx := COMBAT_RESULT_VFX_SCRIPT.new() \
+		as CombatResultVFX3D
+
+	if result_vfx == null:
+		_finish_result_vfx_tracker_step(tracker)
+		return
+
+	card_view.add_child(result_vfx)
+	result_vfx.position = result_local_offset
+
+	await result_vfx.play_and_wait(
+		frames,
+		result_animation_name,
+		result_pixel_size,
+		result_loop_fallback_duration
+	)
+
+	_finish_result_vfx_tracker_step(tracker)
+
+
+func _wait_for_result_vfx_tracker(
+	tracker: Dictionary
+) -> void:
+	while int(tracker.get("remaining", 0)) > 0:
+		await combat_result_vfx_finished
+
+
+func _finish_result_vfx_tracker_step(
+	tracker: Dictionary
+) -> void:
+	tracker["remaining"] = max(
+		0,
+		int(tracker.get("remaining", 0)) - 1
+	)
+	combat_result_vfx_finished.emit()
+
+
+func _get_local_result_data(
+	act: BattleAct
+) -> Dictionary:
+	if act == null:
+		return {}
+
+	if (
+		act.attacker_owner_id == local_player_id
+		and act.attacker != null
+	):
+		return {
+			"card": act.attacker,
+			"outcome": act.attacker_outcome
+		}
+
+	if (
+		act.defender_owner_id == local_player_id
+		and act.defender != null
+	):
+		return {
+			"card": act.defender,
+			"outcome": act.defender_outcome
+		}
+
+	return {}
+
+
+func _get_result_frames(
+	outcome: int
+) -> SpriteFrames:
+	match outcome:
+		BattleAct.Outcome.WIN:
+			return win_result_frames
+
+		BattleAct.Outcome.LOSS:
+			return loss_result_frames
+
+		_:
+			return draw_result_frames
+
+
+func _get_result_vfx_duration(
+	outcome: int
+) -> float:
+	var frames: SpriteFrames = _get_result_frames(outcome)
+
+	if frames == null:
+		return 0.0
+
+	var animation_name: StringName = \
+		_resolve_result_animation_name(frames)
+
+	if animation_name == &"":
+		return 0.0
+
+	var fps: float = frames.get_animation_speed(
+		animation_name
+	)
+
+	if fps <= 0.0:
+		return result_loop_fallback_duration
+
+	var total_relative_duration: float = 0.0
+	var frame_count: int = frames.get_frame_count(
+		animation_name
+	)
+
+	for frame_index: int in range(frame_count):
+		total_relative_duration += \
+			frames.get_frame_duration(
+				animation_name,
+				frame_index
+			)
+
+	return total_relative_duration / fps
+
+
+func _resolve_result_animation_name(
+	frames: SpriteFrames
+) -> StringName:
+	if frames == null:
+		return &""
+
+	if frames.has_animation(result_animation_name):
+		return result_animation_name
+
+	if frames.has_animation(&"default"):
+		return &"default"
+
+	var names: PackedStringArray = \
+		frames.get_animation_names()
+
+	if names.is_empty():
+		return &""
+
+	return StringName(names[0])
+
 
 func _refresh_battle_scores() -> void:
 	if engine == null:

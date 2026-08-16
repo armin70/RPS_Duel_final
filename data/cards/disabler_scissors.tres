@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_2b53a"]
 [ext_resource type="Script" uid="uid://c7x3gmsi5cxow" path="res://core/cards/behaviors/disable_gesture_behavior.gd" id="1_dw1ed"]
 [ext_resource type="Texture2D" uid="uid://bhuo5ffwnbcfh" path="res://art/cards/64.png" id="2_dw1ed"]
+[ext_resource type="Texture2D" uid="uid://bg76xrrloeqar" path="res://art/card_info/30.png" id="3_hdnfu"]
 [ext_resource type="Resource" path="res://data/vfx/disabler_activate_vfx.tres" id="99_vfx1"]
 [ext_resource type="Resource" path="res://data/vfx/disabler_hit_vfx.tres" id="99_vfx2"]
 
@@ -18,6 +19,7 @@ display_name = "disabler scissors"
 gesture = 2
 mana_cost = 5
 front_texture = ExtResource("2_dw1ed")
+info_image = ExtResource("3_hdnfu")
 placed_vfx = ExtResource("99_vfx1")
 target_vfx = ExtResource("99_vfx2")
 behavior = SubResource("Resource_x7kle")

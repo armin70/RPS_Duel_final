@@ -7,14 +7,26 @@ signal drag_requested(
 	screen_position: Vector2
 )
 
+signal inspect_requested(
+	card_view: Card3D
+)
+
 
 @export var back_texture: Texture2D
+
+@export_category("Card Inspect")
+@export_range(0.20, 1.50, 0.05)
+var inspect_hold_time: float = 0.45
+
+@export_range(4.0, 80.0, 1.0)
+var inspect_move_cancel_distance: float = 18.0
 
 
 var card_instance: CardInstance
 var home_transform: Transform3D
 var is_draggable: bool = false
 var is_disabled: bool = false
+var is_face_up: bool = true
 
 
 @onready var card_art: MeshInstance3D = $CardArt
@@ -32,6 +44,10 @@ var keep_selected: bool = false
 var displayed_shield_count: int = 0
 var shield_badge_base_scale: Vector3 = Vector3.ONE
 var card_material: StandardMaterial3D
+
+var _inspect_press_active: bool = false
+var _inspect_press_position: Vector2 = Vector2.ZERO
+var _inspect_press_serial: int = 0
 
 
 func _ready() -> void:
@@ -78,6 +94,11 @@ func setup(
 
 
 func set_face_up(value: bool) -> void:
+	is_face_up = value
+
+	if not value:
+		_cancel_inspect_hold()
+
 	_create_card_material()
 
 	if card_material == null:
@@ -136,25 +157,118 @@ func _input_event(
 	_normal: Vector3,
 	_shape_index: int
 ) -> void:
-	if not is_draggable:
-		return
-
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			drag_requested.emit(
-				self,
-				event.position
-			)
+			_begin_inspect_hold(event.position)
+
+			if is_draggable:
+				drag_requested.emit(
+					self,
+					event.position
+				)
+		else:
+			_cancel_inspect_hold()
+
+	elif event is InputEventMouseButton:
+		if event.button_index != MOUSE_BUTTON_LEFT:
+			return
+
+		if event.pressed:
+			_begin_inspect_hold(event.position)
+
+			if is_draggable:
+				drag_requested.emit(
+					self,
+					event.position
+				)
+		else:
+			_cancel_inspect_hold()
+
+
+func _input(event: InputEvent) -> void:
+	if not _inspect_press_active:
+		return
+
+	if event is InputEventScreenDrag:
+		_cancel_inspect_if_moved(event.position)
+
+	elif event is InputEventMouseMotion:
+		_cancel_inspect_if_moved(event.position)
+
+	elif event is InputEventScreenTouch:
+		if not event.pressed:
+			_cancel_inspect_hold()
 
 	elif event is InputEventMouseButton:
 		if (
 			event.button_index == MOUSE_BUTTON_LEFT
-			and event.pressed
+			and not event.pressed
 		):
-			drag_requested.emit(
-				self,
-				event.position
-			)
+			_cancel_inspect_hold()
+
+
+func _begin_inspect_hold(
+	screen_position: Vector2
+) -> void:
+	# Never reveal information for a face-down card.
+	if not is_face_up:
+		return
+
+	if card_instance == null:
+		return
+
+	if card_instance.definition == null:
+		return
+
+	_inspect_press_active = true
+	_inspect_press_position = screen_position
+	_inspect_press_serial += 1
+
+	var current_serial: int = _inspect_press_serial
+	_wait_for_inspect_hold(current_serial)
+
+
+func _wait_for_inspect_hold(
+	serial: int
+) -> void:
+	await get_tree().create_timer(
+		inspect_hold_time
+	).timeout
+
+	if not _inspect_press_active:
+		return
+
+	if serial != _inspect_press_serial:
+		return
+
+	if not is_face_up:
+		_cancel_inspect_hold()
+		return
+
+	_inspect_press_active = false
+	_inspect_press_serial += 1
+
+	inspect_requested.emit(self)
+
+
+func _cancel_inspect_if_moved(
+	screen_position: Vector2
+) -> void:
+	if (
+		screen_position.distance_to(
+			_inspect_press_position
+		)
+		> inspect_move_cancel_distance
+	):
+		_cancel_inspect_hold()
+
+
+func _cancel_inspect_hold() -> void:
+	if not _inspect_press_active:
+		return
+
+	_inspect_press_active = false
+	_inspect_press_serial += 1
 
 
 func set_disabled(

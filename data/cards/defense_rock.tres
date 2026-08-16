@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://8dbm7y35e4x8" path="res://core/cards/behaviors/defense_behavior.gd" id="1_tygn1"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_wy2mk"]
 [ext_resource type="Texture2D" uid="uid://daygpt55b1mmo" path="res://art/cards/19.png" id="2_tygn1"]
+[ext_resource type="Texture2D" uid="uid://w6utxfy53vi1" path="res://art/card_info/24.png" id="3_morto"]
 
 [sub_resource type="Resource" id="Resource_qhkdt"]
 script = ExtResource("1_tygn1")
@@ -14,5 +15,6 @@ card_id = &"defense_rock"
 display_name = "Defense Rock"
 mana_cost = 3
 front_texture = ExtResource("2_tygn1")
+info_image = ExtResource("3_morto")
 behavior = SubResource("Resource_qhkdt")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

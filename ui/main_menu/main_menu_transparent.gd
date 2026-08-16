@@ -82,6 +82,10 @@ const TUTORIAL_PROGRESS_KEY: String = "completed"
 
 
 func _ready() -> void:
+	# Main menu always owns the menu music. This also restores it after
+	# reload_current_scene() when returning from a match.
+	MusicManager.play_menu_music()
+
 	menu_root.hide()
 	alpha_notice.show()
 
@@ -451,6 +455,10 @@ func _start_game_sequence() -> void:
 		)
 		game_transition_running = false
 		return
+
+	# The camera has reached the table: from this point on we are in gameplay,
+	# so switch from the menu track to the match track.
+	MusicManager.play_game_music()
 
 	if tutorial_mode_selected:
 		await controller.begin_tutorial_match()

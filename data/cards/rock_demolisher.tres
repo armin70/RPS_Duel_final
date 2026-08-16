@@ -3,6 +3,7 @@
 [ext_resource type="Texture2D" uid="uid://c30nmb3n101i8" path="res://art/cards/32.jpg" id="1_0ysfg"]
 [ext_resource type="Script" uid="uid://cirqleme7ys7h" path="res://core/cards/behaviors/discard_lane_draw_behavior.gd" id="1_ekfy1"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_wdtk8"]
+[ext_resource type="Texture2D" uid="uid://5uney5j7mfgr" path="res://art/card_info/36.png" id="3_g0lkr"]
 [ext_resource type="Resource" uid="uid://dnduak4qkoiw" path="res://data/vfx/bomb_placed_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_g4gwm"]
@@ -15,6 +16,7 @@ card_id = &"rock_demolisher"
 display_name = "rock demolisher"
 mana_cost = 3
 front_texture = ExtResource("1_0ysfg")
+info_image = ExtResource("3_g0lkr")
 placed_vfx = ExtResource("99_vfx1")
 behavior = SubResource("Resource_g4gwm")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

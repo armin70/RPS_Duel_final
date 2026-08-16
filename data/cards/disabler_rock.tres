@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://c7x3gmsi5cxow" path="res://core/cards/behaviors/disable_gesture_behavior.gd" id="1_7d5yr"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_81eli"]
 [ext_resource type="Texture2D" uid="uid://pmbfghr65861" path="res://art/cards/63.png" id="2_s6452"]
+[ext_resource type="Texture2D" uid="uid://34rcnv3sljwu" path="res://art/card_info/29.png" id="3_74cqj"]
 [ext_resource type="Resource" path="res://data/vfx/disabler_activate_vfx.tres" id="99_vfx1"]
 [ext_resource type="Resource" path="res://data/vfx/disabler_hit_vfx.tres" id="99_vfx2"]
 
@@ -16,6 +17,7 @@ card_id = &"disabler_rock"
 display_name = "disabler rock"
 mana_cost = 5
 front_texture = ExtResource("2_s6452")
+info_image = ExtResource("3_74cqj")
 placed_vfx = ExtResource("99_vfx1")
 target_vfx = ExtResource("99_vfx2")
 behavior = SubResource("Resource_s6452")

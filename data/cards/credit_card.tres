@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://tmrave02dyid"]
 
 [ext_resource type="Script" uid="uid://cne6iddp15aiv" path="res://core/cards/behaviors/credit_card_behavior.gd" id="1_mhx62"]
-[ext_resource type="Texture2D" uid="uid://e21pq6logpsr" path="res://art/cards/9.png" id="2_mhx62"]
+[ext_resource type="Texture2D" uid="uid://bwqb40pt20dxs" path="res://art/cards/9.png" id="2_mhx62"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="3_n22ru"]
 
 [sub_resource type="Resource" id="Resource_m6jbo"]

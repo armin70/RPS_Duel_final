@@ -23,6 +23,9 @@ var mana_cost: int = 1
 @export_category("Visual")
 @export var front_texture: Texture2D
 
+# Full-page help/reference image shown when the player holds this card.
+@export var info_image: Texture2D
+
 
 @export_category("VFX")
 
