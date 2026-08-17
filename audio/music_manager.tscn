@@ -1,12 +1,10 @@
-[gd_scene format=3 uid="uid://bu5smlcw3lq3q"]
+[gd_scene format=3 uid="uid://cdoe50rvfsbil"]
 
 [ext_resource type="Script" uid="uid://b63d3w0roma0r" path="res://audio/music_manager.gd" id="1_1826a"]
-[ext_resource type="AudioStream" uid="uid://bclglxeklyuih" path="res://audio/RPS Menu Theme.mp3" id="2_8vo66"]
-[ext_resource type="AudioStream" uid="uid://c2uwfj57tkv7w" path="res://audio/RPS Main Battle Theme.ogg" id="3_t7ws8"]
+[ext_resource type="AudioStream" uid="uid://cijwlnofpd8p7" path="res://RPS.mp3" id="2_1826a"]
 
 [node name="MusicManager" type="Node" unique_id=1656370774]
 script = ExtResource("1_1826a")
-menu_music = ExtResource("2_8vo66")
-game_music = ExtResource("3_t7ws8")
+menu_music = ExtResource("2_1826a")
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=1400860265]

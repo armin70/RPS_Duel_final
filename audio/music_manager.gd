@@ -113,6 +113,15 @@ func stop_music() -> void:
 	music_player.stop()
 
 
+
+
+func is_music_paused() -> bool:
+	# Public query for UI code. Keep the AudioStreamPlayer private to this manager.
+	if music_player == null:
+		return true
+	return music_player.stream_paused
+
+
 func pause_music() -> void:
 	music_player.stream_paused = true
 

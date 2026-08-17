@@ -82,9 +82,12 @@ const TUTORIAL_PROGRESS_KEY: String = "completed"
 
 
 func _ready() -> void:
-	# Main menu always owns the menu music. This also restores it after
-	# reload_current_scene() when returning from a match.
-	MusicManager.play_menu_music()
+	# Resolve the manager from /root instead of trusting the global
+	# Autoload symbol. If the Autoload entry is missing/broken, create
+	# exactly one persistent fallback instance so the menu never crashes.
+	var music_manager := _get_or_create_music_manager()
+	if music_manager != null and music_manager.has_method(&"play_menu_music"):
+		music_manager.call(&"play_menu_music")
 
 	menu_root.hide()
 	alpha_notice.show()
@@ -458,7 +461,9 @@ func _start_game_sequence() -> void:
 
 	# The camera has reached the table: from this point on we are in gameplay,
 	# so switch from the menu track to the match track.
-	MusicManager.play_game_music()
+	var music_manager := _get_or_create_music_manager()
+	if music_manager != null and music_manager.has_method(&"play_game_music"):
+		music_manager.call(&"play_game_music")
 
 	if tutorial_mode_selected:
 		await controller.begin_tutorial_match()
@@ -467,6 +472,34 @@ func _start_game_sequence() -> void:
 
 	# دیگر به منو نیاز نداریم.
 	queue_free()
+
+
+func _get_or_create_music_manager() -> Node:
+	var root := get_tree().root
+	if root == null:
+		return null
+
+	var existing := root.get_node_or_null("MusicManager")
+	if existing != null:
+		return existing
+
+	var manager_scene := load("res://audio/music_manager.tscn") as PackedScene
+	if manager_scene == null:
+		push_error("Could not load res://audio/music_manager.tscn")
+		return null
+
+	var manager := manager_scene.instantiate()
+	if manager == null:
+		push_error("Could not instantiate MusicManager scene.")
+		return null
+
+	manager.name = "MusicManager"
+	root.add_child(manager)
+	push_warning(
+		"MusicManager Autoload was missing; created a runtime fallback. "
+		+ "Re-add res://audio/music_manager.tscn as the MusicManager Autoload."
+	)
+	return manager
 
 
 func _get_match_controller() -> MatchController3D:

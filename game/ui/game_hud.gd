@@ -86,17 +86,52 @@ func _ready() -> void:
 	)
 
 	add_child(exit_confirmation)
+func _get_music_manager() -> Node:
+	# Resolve from /root. This also makes running the gameplay scene directly
+	# from the editor safe when the Autoload entry is temporarily unavailable.
+	var root := get_tree().root
+	if root == null:
+		return null
+
+	var existing := root.get_node_or_null("MusicManager")
+	if existing != null:
+		return existing
+
+	var manager_scene := load("res://audio/music_manager.tscn") as PackedScene
+	if manager_scene == null:
+		return null
+
+	var manager := manager_scene.instantiate()
+	if manager == null:
+		return null
+
+	manager.name = "MusicManager"
+	root.add_child(manager)
+	return manager
+
+
 func _on_music_button_pressed() -> void:
-	if MusicManager.music_player.stream_paused:
-		MusicManager.resume_music()
+	var manager := _get_music_manager()
+	if manager == null:
+		push_warning("MusicManager autoload is not available.")
+		return
+
+	if manager.is_music_paused():
+		manager.resume_music()
 	else:
-		MusicManager.pause_music()
+		manager.pause_music()
 
 	_refresh_music_button()
 
 
 func _refresh_music_button() -> void:
-	if MusicManager.music_player.stream_paused:
+	var manager := _get_music_manager()
+	if manager == null:
+		# Keep the HUD usable even if the audio autoload is temporarily absent.
+		music_button.texture_normal = music_off_texture
+		return
+
+	if manager.is_music_paused():
 		music_button.texture_normal = music_off_texture
 	else:
 		music_button.texture_normal = music_on_texture
@@ -109,13 +144,6 @@ func _on_survey_button_pressed() -> void:
 
 
 func _on_menu_button_pressed() -> void:
-	var tutorial := get_tree().get_first_node_in_group(
-		"tutorial_controller"
-	) as TutorialController
-
-	if tutorial != null and tutorial.is_active():
-		return
-
 	exit_confirmation.popup_centered(
 		Vector2i(500, 220)
 	)
