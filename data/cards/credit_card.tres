@@ -14,6 +14,7 @@ card_id = &"credit_card"
 display_name = "credit_card"
 gesture = 1
 mana_cost = 2
+rarity = 1
 front_texture = ExtResource("2_mhx62")
 behavior = SubResource("Resource_m6jbo")
 metadata/_custom_type_script = "uid://bfa6ofr3bgyvd"

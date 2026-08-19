@@ -16,6 +16,7 @@ card_id = &"killer_scissors"
 display_name = "killer scissors"
 gesture = 2
 mana_cost = 4
+rarity = 1
 front_texture = ExtResource("2_8knnj")
 info_image = ExtResource("3_tlqgh")
 placed_vfx = ExtResource("99_vfx1")

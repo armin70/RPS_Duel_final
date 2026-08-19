@@ -32,7 +32,20 @@ signal end_turn_pressed
 @onready var survey_button: Button = %SurveyButton
 @onready var music_button: TextureButton = \
 	$Root/PlayerPassPanel/MusicButton
+@export_category("Dealer Notice")
 
+@export_range(0.10, 0.80, 0.01)
+var dealer_notice_height_ratio: float = 0.58
+
+@export_range(0.0, 0.50, 0.01)
+var dealer_notice_left_ratio: float = 0.02
+
+@export_range(0.0, 0.70, 0.01)
+var dealer_notice_top_ratio: float = 0.17
+
+
+var dealer_notice_rect: TextureRect
+var dealer_notice_tween: Tween
 @export var music_on_texture: Texture2D
 @export var music_off_texture: Texture2D
 @export var survey_url: String = ""
@@ -84,6 +97,115 @@ func _ready() -> void:
 	exit_confirmation.confirmed.connect(
 		_confirm_return_to_menu
 	)
+	_build_dealer_notice()
+	
+func _build_dealer_notice() -> void:
+	dealer_notice_rect = TextureRect.new()
+	dealer_notice_rect.name = "DealerNotice"
+
+	dealer_notice_rect.expand_mode = (
+		TextureRect.EXPAND_IGNORE_SIZE
+	)
+
+	dealer_notice_rect.stretch_mode = (
+		TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	)
+
+	dealer_notice_rect.mouse_filter = (
+		Control.MOUSE_FILTER_IGNORE
+	)
+
+	# پشت بقیه UIهای HUD باشد.
+	dealer_notice_rect.z_index = -10
+
+	dealer_notice_rect.visible = false
+
+	add_child(dealer_notice_rect)
+
+
+func show_dealer_notice(
+	texture: Texture2D,
+	duration: float = 3.0
+) -> void:
+	if texture == null:
+		return
+
+	if dealer_notice_rect == null:
+		return
+
+	if dealer_notice_tween != null:
+		if dealer_notice_tween.is_valid():
+			dealer_notice_tween.kill()
+
+	var viewport_size: Vector2 = (
+		get_viewport().get_visible_rect().size
+	)
+
+	var texture_size: Vector2 = texture.get_size()
+
+	if texture_size.y <= 0.0:
+		return
+
+	var notice_height: float = (
+		viewport_size.y
+		* dealer_notice_height_ratio
+	)
+
+	var aspect_ratio: float = (
+		texture_size.x
+		/ texture_size.y
+	)
+
+	var notice_width: float = (
+		notice_height
+		* aspect_ratio
+	)
+
+	dealer_notice_rect.texture = texture
+
+	dealer_notice_rect.size = Vector2(
+		notice_width,
+		notice_height
+	)
+
+	dealer_notice_rect.position = Vector2(
+		viewport_size.x
+		* dealer_notice_left_ratio,
+
+		viewport_size.y
+		* dealer_notice_top_ratio
+	)
+
+	dealer_notice_rect.modulate.a = 0.0
+	dealer_notice_rect.visible = true
+
+	dealer_notice_tween = create_tween()
+
+	# Fade in
+	dealer_notice_tween.tween_property(
+		dealer_notice_rect,
+		"modulate:a",
+		1.0,
+		0.18
+	)
+
+	# چند ثانیه بماند
+	dealer_notice_tween.tween_interval(
+		duration
+	)
+
+	# Fade out
+	dealer_notice_tween.tween_property(
+		dealer_notice_rect,
+		"modulate:a",
+		0.0,
+		0.30
+	)
+
+	dealer_notice_tween.tween_callback(
+		dealer_notice_rect.hide
+	)
+
 
 	add_child(exit_confirmation)
 func _get_music_manager() -> Node:

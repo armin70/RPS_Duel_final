@@ -16,6 +16,7 @@ script = ExtResource("1_81eli")
 card_id = &"disabler_rock"
 display_name = "disabler rock"
 mana_cost = 5
+rarity = 1
 front_texture = ExtResource("2_s6452")
 info_image = ExtResource("3_74cqj")
 placed_vfx = ExtResource("99_vfx1")

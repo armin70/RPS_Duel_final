@@ -18,6 +18,7 @@ card_id = &"disabler_paper"
 display_name = "disabler paper"
 gesture = 1
 mana_cost = 5
+rarity = 1
 front_texture = ExtResource("2_g44i5")
 info_image = ExtResource("3_mf84o")
 placed_vfx = ExtResource("99_vfx1")

@@ -17,6 +17,7 @@ card_id = &"collector_scissors"
 display_name = "Scissors Collector"
 gesture = 2
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_ud1ny")
 info_image = ExtResource("4_7e486")
 ability_vfx = ExtResource("99_vfx1")

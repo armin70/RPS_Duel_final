@@ -2,6 +2,12 @@ class_name CardDefinition
 extends Resource
 
 
+enum Rarity {
+	COMMON,
+	RARE
+}
+
+
 @export_category("Identity")
 
 @export var card_id: StringName
@@ -15,6 +21,8 @@ extends Resource
 @export_range(0, 20, 1)
 var mana_cost: int = 1
 
+@export var rarity: Rarity = Rarity.COMMON
+
 
 @export_category("Presentation")
 
@@ -25,7 +33,12 @@ var mana_cost: int = 1
 
 # Full-page help/reference image shown when the player holds this card.
 @export var info_image: Texture2D
+@export_category("Dealer Notice")
 
+@export var dealer_notice_texture: Texture2D
+
+@export_range(0.5, 10.0, 0.1)
+var dealer_notice_duration: float = 3.0
 
 @export_category("VFX")
 

@@ -15,6 +15,7 @@ script = ExtResource("1_japea")
 card_id = &"mustache_rock"
 display_name = "Mustache Rock"
 mana_cost = 4
+rarity = 1
 front_texture = ExtResource("2_x32sk")
 info_image = ExtResource("4_v23jg")
 ability_vfx = ExtResource("99_vfx1")

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://n3xfaahlc72a"]
+
+[ext_resource type="Script" uid="uid://bq2xja54vsq07" path="res://core/dealer/behaviors/gladiator_dealer_behavior.gd" id="1_behavior"]
+[ext_resource type="Texture2D" uid="uid://dwoa6rbx0cks7" path="res://art/Rps Card Design (3) (1).png" id="2_013nc"]
+[ext_resource type="Texture2D" uid="uid://c1hc278f555q" path="res://art/4.png" id="2_37kk5"]
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="2_card"]
+[ext_resource type="Resource" uid="uid://btg205yniljve" path="res://data/vfx/div.tres" id="4_vfx"]
+
+[sub_resource type="Resource" id="GladiatorBehavior"]
+script = ExtResource("1_behavior")
+
+[resource]
+script = ExtResource("2_card")
+card_id = &"gladiator_div"
+display_name = "Gladiator Div"
+gesture = 3
+front_texture = ExtResource("2_37kk5")
+info_image = ExtResource("2_013nc")
+dealer_notice_texture = ExtResource("2_013nc")
+dealer_notice_duration = 4.5
+placed_vfx = ExtResource("4_vfx")
+dealer_behavior = SubResource("GladiatorBehavior")

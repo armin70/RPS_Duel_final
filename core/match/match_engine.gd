@@ -656,18 +656,6 @@ func _send_board_card_to_reserve(
 	if not SlotID.is_valid(slot_id):
 		return false
 
-	if not _can_play_in_row_order(
-		player,
-		slot_id
-	):
-		print(
-			"PLAY FAILED | front row must be full "
-			+ "before using the back row"
-		)
-		return false
-
-	var replaced_card: CardInstance = \
-		player.board.get_card(slot_id)
 	# مطمئن می‌شویم همان CardInstance هنوز در همان Slot است.
 	if player.board.get_card(slot_id) != card:
 		return false
@@ -822,6 +810,114 @@ func _resolve_killer_cards() -> void:
 		)
 
 
+func _resolve_dealer_lane_losers() -> void:
+	if state == null or active_battle_sequence == null:
+		return
+
+	var affected_lanes: Dictionary = _get_loser_discard_lanes()
+	if affected_lanes.is_empty():
+		return
+
+	var defeated_targets: Array[Dictionary] = []
+	var defeated_instance_ids: Dictionary = {}
+
+	for act: BattleAct in active_battle_sequence.acts:
+		if act == null or not act.resolved:
+			continue
+
+		# خود Gladiator Div در مبارزه‌ی Dealer یک DIV است و کارت‌های
+		# معمولی همیشه به آن می‌بازند. اثر ویژه فقط باید بازنده‌ی Clash
+		# بین دو بازیکن را حذف کند، نه کارتی را که به خود Dealer باخته است.
+		if act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+			continue
+
+		_queue_dealer_lane_loser(
+			defeated_targets,
+			defeated_instance_ids,
+			affected_lanes,
+			act.attacker_owner_id,
+			act.attacker,
+			act.attacker_slot_id,
+			act.attacker_outcome
+		)
+		_queue_dealer_lane_loser(
+			defeated_targets,
+			defeated_instance_ids,
+			affected_lanes,
+			act.defender_owner_id,
+			act.defender,
+			act.defender_slot_id,
+			act.defender_outcome
+		)
+
+	for target: Dictionary in defeated_targets:
+		_send_board_card_to_reserve(
+			int(target.get("player_id", 0)),
+			target.get("card", null) as CardInstance,
+			"GLADIATOR DIV DISCARDED LOSER"
+		)
+
+
+func _get_loser_discard_lanes() -> Dictionary:
+	var result: Dictionary = {}
+
+	if state == null or state.dealer == null:
+		return result
+
+	for dealer_slot_id: int in DealerSlotID.all_slots():
+		var dealer_card: CardInstance = state.dealer.slots.get(
+			dealer_slot_id,
+			null
+		) as CardInstance
+
+		if dealer_card == null or dealer_card.definition == null:
+			continue
+
+		var behavior: DealerCardBehavior = \
+			dealer_card.definition.dealer_behavior
+
+		if (
+			behavior == null
+			or not behavior.discards_lane_losers_after_combat()
+		):
+			continue
+
+		result[DealerSlotID.get_lane(dealer_slot_id)] = true
+
+	return result
+
+
+func _queue_dealer_lane_loser(
+	targets: Array[Dictionary],
+	instance_ids: Dictionary,
+	affected_lanes: Dictionary,
+	player_id: int,
+	card: CardInstance,
+	slot_id: int,
+	outcome: BattleAct.Outcome
+) -> void:
+	if outcome != BattleAct.Outcome.LOSS:
+		return
+
+	if player_id not in [1, 2]:
+		return
+
+	if card == null or not SlotID.is_valid(slot_id):
+		return
+
+	if not affected_lanes.has(SlotID.get_lane(slot_id)):
+		return
+
+	if instance_ids.has(card.instance_id):
+		return
+
+	instance_ids[card.instance_id] = true
+	targets.append({
+		"player_id": player_id,
+		"card": card
+	})
+
+
 func finish_combat() -> bool:
 	if state == null:
 		return false
@@ -834,6 +930,10 @@ func finish_combat() -> bool:
 	# نتیجه تمام Clashها بررسی می‌شود.
 	# اهداف شکست‌خورده و خود Killerها وارد Reserve می‌شوند.
 	_resolve_killer_cards()
+
+	# اگر Gladiator Div در یک لاین باشد، کارت‌های بازنده‌ی Clash بین
+	# دو بازیکن در همان لاین بعد از Combat از زمین خارج می‌شوند.
+	_resolve_dealer_lane_losers()
 
 	var dealer_ready: bool = \
 		DealerMover.deal_new_board(

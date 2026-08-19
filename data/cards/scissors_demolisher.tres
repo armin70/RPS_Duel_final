@@ -16,6 +16,7 @@ card_id = &"Scissors_demolisher"
 display_name = "Scissors_demolisher"
 gesture = 2
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_t41pe")
 info_image = ExtResource("3_a5sp4")
 placed_vfx = ExtResource("99_vfx1")

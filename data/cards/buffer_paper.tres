@@ -17,6 +17,7 @@ card_id = &"buffer_paper"
 display_name = "buffer_paper"
 gesture = 1
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_edgx8")
 info_image = ExtResource("3_0dtdk")
 placed_vfx = ExtResource("3_elog7")

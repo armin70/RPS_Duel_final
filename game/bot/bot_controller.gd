@@ -8,8 +8,22 @@ const BOARD_MOVE_MANA_COST: int = 1
 const INVALID_SCORE: float = -1000000.0
 const HARDCORE_SETTING: StringName = &"gameplay/hardcore_bot"
 
+# The bot should spend its single board move only when the resulting
+# position is meaningfully better.
+const STRATEGIC_MOVE_MIN_IMPROVEMENT: float = 4.0
+const STRATEGIC_MOVE_MANA_PENALTY: float = 1.15
+
 
 var random := RandomNumberGenerator.new()
+
+# FAIR MODE KNOWLEDGE
+# Snapshot of the opponent board at the START of the turn, before any
+# secret play/move happens. Values are cloned CardInstances so later
+# movement cannot leak a changed current_slot or other mutable state.
+var fair_known_opponent_board: Dictionary = {}
+var fair_known_opponent_player_id: int = -1
+var fair_known_turn_number: int = -1
+var fair_snapshot_ready: bool = false
 
 
 func _init() -> void:
@@ -33,8 +47,86 @@ func is_hardcore_mode() -> bool:
 	)
 
 
-# در حالت Fair فقط کارت‌هایی که در Turnهای قبلی قرار گرفته‌اند
-# قابل بررسی‌اند؛ کارت‌های Turn جاری هنوز Face-down هستند.
+# =========================================================
+# FAIR KNOWLEDGE SNAPSHOT
+# =========================================================
+
+func capture_fair_opponent_snapshot(
+	state: MatchState,
+	opponent_player_id: int
+) -> void:
+	fair_known_opponent_board.clear()
+	fair_known_opponent_player_id = opponent_player_id
+	fair_known_turn_number = -1
+	fair_snapshot_ready = false
+
+	if state == null:
+		return
+
+	var opponent: PlayerState = state.get_player(
+		opponent_player_id
+	)
+
+	if opponent == null:
+		return
+
+	for slot_id: int in SlotID.all_slots():
+		var card: CardInstance = opponent.board.get_card(
+			slot_id
+		)
+
+		if card == null:
+			continue
+
+		var snapshot_card: CardInstance = 			_make_fair_card_snapshot(
+				card,
+				slot_id
+			)
+
+		if snapshot_card != null:
+			fair_known_opponent_board[
+				slot_id
+			] = snapshot_card
+
+	fair_known_turn_number = state.turn_number
+	fair_snapshot_ready = true
+
+	print(
+		"FAIR BOT SNAPSHOT | turn=",
+		state.turn_number,
+		" | known_cards=",
+		fair_known_opponent_board.size()
+	)
+
+
+func _make_fair_card_snapshot(
+	card: CardInstance,
+	known_slot_id: int
+) -> CardInstance:
+	if card == null or card.definition == null:
+		return null
+
+	var snapshot := CardInstance.new(
+		card.instance_id,
+		card.definition,
+		card.owner_id
+	)
+
+	snapshot.zone = card.zone
+	snapshot.current_slot = known_slot_id
+	snapshot.turn_played = card.turn_played
+	snapshot.disabled_combat_turn = (
+		card.disabled_combat_turn
+	)
+	snapshot.shield_count = card.shield_count
+	snapshot.shields_initialized = (
+		card.shields_initialized
+	)
+	snapshot.ability_used = card.ability_used
+
+	return snapshot
+
+
 func _can_inspect_opponent_card(
 	state: MatchState,
 	card: CardInstance
@@ -45,7 +137,22 @@ func _can_inspect_opponent_card(
 	if is_hardcore_mode():
 		return true
 
-	return card.turn_played < state.turn_number
+	if not fair_snapshot_ready:
+		return false
+
+	if fair_known_turn_number != state.turn_number:
+		return false
+
+	for known_variant: Variant in 			fair_known_opponent_board.values():
+		var known_card := known_variant as CardInstance
+
+		if known_card == null:
+			continue
+
+		if known_card.instance_id == card.instance_id:
+			return true
+
+	return false
 
 
 func _get_visible_opponent_card(
@@ -56,14 +163,28 @@ func _get_visible_opponent_card(
 	if state == null or opponent == null:
 		return null
 
-	var card: CardInstance = opponent.board.get_card(
-		slot_id
-	)
+	# Hardcore intentionally keeps perfect information.
+	if is_hardcore_mode():
+		return opponent.board.get_card(slot_id)
 
-	if not _can_inspect_opponent_card(state, card):
+	# Fair fails closed. If a fresh snapshot was not captured,
+	# it sees no opponent identity instead of leaking real state.
+	if not fair_snapshot_ready:
 		return null
 
-	return card
+	if fair_known_turn_number != state.turn_number:
+		return null
+
+	if (
+		fair_known_opponent_player_id
+		!= opponent.player_id
+	):
+		return null
+
+	return fair_known_opponent_board.get(
+		slot_id,
+		null
+	) as CardInstance
 
 
 # نسخه دید ربات از Disable است. در حالت Fair، Disabler مخفیِ
@@ -96,22 +217,24 @@ func _is_card_disabled_for_bot_view(
 		return false
 
 	for source_slot_id: int in SlotID.all_slots():
-		var source_card: CardInstance = \
-			source_player.board.get_card(
+		var source_card: CardInstance = null
+
+		# کارت‌های خود Bot همیشه معلوم‌اند.
+		if source_owner_id == bot.player_id:
+			source_card = source_player.board.get_card(
+				source_slot_id
+			)
+		else:
+			# برای حریف فقط Snapshot عمومی ابتدای Turn استفاده می‌شود.
+			# بنابراین Disabler قدیمی که مخفیانه جابه‌جا شده، محل جدیدش لو نمی‌رود.
+			source_card = _get_visible_opponent_card(
+				state,
+				source_player,
 				source_slot_id
 			)
 
 		if source_card == null:
 			continue
-
-		# کارت‌های خود ربات همیشه برای خودش معلوم‌اند.
-		# کارت‌های طرف مقابل فقط پس از Reveal بررسی می‌شوند.
-		if source_owner_id != bot.player_id:
-			if not _can_inspect_opponent_card(
-				state,
-				source_card
-			):
-				continue
 
 		if source_card.definition == null:
 			continue
@@ -196,6 +319,20 @@ func play_turn(
 		state,
 		bot,
 		opponent
+	):
+		completed_actions += 1
+
+	# اگر Move برای فرار از Disabler مصرف نشده، همه جابه‌جایی‌های قانونی
+	# را بررسی کن. مقصد می‌تواند خالی یا یک کارت قدیمی قابل Cover باشد.
+	# بعد از Move، Planner عادی ادامه پیدا می‌کند؛ پس Move -> Play/Cover داریم.
+	if (
+		not is_hardcore_mode()
+		and _try_best_strategic_move(
+			engine,
+			state,
+			bot,
+			opponent
+		)
 	):
 		completed_actions += 1
 
@@ -398,7 +535,7 @@ func _is_legal_play_candidate(
 		- replaced_card.turn_played
 	)
 
-	if turns_since_played < 1:
+	if turns_since_played < 2:
 		return false
 
 	return CardGesture.can_cover(
@@ -437,6 +574,17 @@ func _score_play_candidate(
 	)
 
 	score += _score_special_behavior(
+		state,
+		bot,
+		opponent,
+		card,
+		slot_id
+	)
+
+	# Generic Dealer-lane consequence hook.
+	# Gladiator can expose get_ai_pvp_loss_penalty() without BotController
+	# knowing the card id/name.
+	score += _score_dealer_pvp_consequence(
 		state,
 		bot,
 		opponent,
@@ -877,6 +1025,157 @@ func _score_covering_own_card(
 	return score
 
 
+func _calculate_move_net_benefit(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	moving_card: CardInstance,
+	from_slot_id: int,
+	to_slot_id: int
+) -> float:
+	if (
+		state == null
+		or bot == null
+		or moving_card == null
+		or moving_card.definition == null
+	):
+		return INVALID_SCORE
+
+	var current_score: float = _score_existing_card_position(
+		state,
+		bot,
+		opponent,
+		moving_card,
+		from_slot_id
+	)
+
+	var destination_score: float = _score_existing_card_position(
+		state,
+		bot,
+		opponent,
+		moving_card,
+		to_slot_id
+	)
+
+	# Mana itself has value. A marginal positional improvement is not enough.
+	var benefit: float = (
+		destination_score
+		- current_score
+		- STRATEGIC_MOVE_MANA_PENALTY
+	)
+
+	var replaced: CardInstance = bot.board.get_card(
+		to_slot_id
+	)
+
+	if replaced != null:
+		var replaced_score: float = _score_existing_card_position(
+			state,
+			bot,
+			opponent,
+			replaced,
+			to_slot_id
+		)
+
+		# Cover means we intentionally give up the card already there.
+		# This is a REAL cost, especially for valuable/special cards.
+		benefit -= _card_importance(replaced) * 1.25
+
+		# If that card is genuinely in a bad position, removing it has some value,
+		# but this bonus is capped so the bot does not Cover for weak reasons.
+		if replaced_score < -4.0:
+			benefit += minf(
+				abs(replaced_score) * 0.35,
+				4.0
+			)
+
+		# When the board is completely jammed, opening one slot is useful,
+		# but not enough by itself to justify a bad move.
+		if _get_empty_legal_slot_count(bot) == 0:
+			benefit += 1.5
+
+	return benefit
+
+
+func _try_best_strategic_move(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> bool:
+	if engine == null or state == null or bot == null:
+		return false
+
+	if bot.current_mana < BOARD_MOVE_MANA_COST:
+		return false
+
+	if bot.board_move_used_turn == state.turn_number:
+		return false
+
+	var best_from: int = -1
+	var best_to: int = -1
+	var best_improvement: float = (
+		STRATEGIC_MOVE_MIN_IMPROVEMENT
+	)
+
+	for from_slot_id: int in SlotID.all_slots():
+		var moving_card: CardInstance = 			bot.board.get_card(
+				from_slot_id
+			)
+
+		if (
+			moving_card == null
+			or moving_card.definition == null
+		):
+			continue
+
+		for to_slot_id: int in SlotID.all_slots():
+			if not _is_legal_move_candidate(
+				state,
+				bot,
+				moving_card,
+				from_slot_id,
+				to_slot_id
+			):
+				continue
+
+			var improvement: float = _calculate_move_net_benefit(
+				state,
+				bot,
+				opponent,
+				moving_card,
+				from_slot_id,
+				to_slot_id
+			)
+
+			# No random movement. Only a clear positive net benefit is accepted.
+			if improvement > best_improvement:
+				best_improvement = improvement
+				best_from = from_slot_id
+				best_to = to_slot_id
+
+	if best_from == -1 or best_to == -1:
+		return false
+
+	var moved: bool = engine.move_board_card(
+		bot.player_id,
+		best_from,
+		best_to
+	)
+
+	if moved:
+		print(
+			"BOT STRATEGIC MOVE | from=",
+			best_from,
+			" | to=",
+			best_to,
+			" | improvement=",
+			best_improvement
+		)
+
+	return moved
+
+
 func _try_reposition_disabled_card(
 	engine: MatchEngine,
 	state: MatchState,
@@ -891,7 +1190,7 @@ func _try_reposition_disabled_card(
 
 	var best_from: int = -1
 	var best_to: int = -1
-	var best_improvement: float = INVALID_SCORE
+	var best_improvement: float = STRATEGIC_MOVE_MIN_IMPROVEMENT
 
 	for from_slot_id: int in SlotID.all_slots():
 		var moving_card: CardInstance = \
@@ -908,15 +1207,6 @@ func _try_reposition_disabled_card(
 			moving_card
 		):
 			continue
-
-		var current_score: float = \
-			_score_existing_card_position(
-				state,
-				bot,
-				opponent,
-				moving_card,
-				from_slot_id
-			)
 
 		for to_slot_id: int in SlotID.all_slots():
 			if not _is_legal_move_candidate(
@@ -938,37 +1228,18 @@ func _try_reposition_disabled_card(
 			):
 				continue
 
-			var destination_score: float = \
-				_score_existing_card_position(
-					state,
-					bot,
-					opponent,
-					moving_card,
-					to_slot_id
-				)
-
-			# فرار از Disable همیشه اولویت اصلی دارد.
-			var improvement: float = (
-				destination_score
-				- current_score
-				+ 100.0
+			var improvement: float = _calculate_move_net_benefit(
+				state,
+				bot,
+				opponent,
+				moving_card,
+				from_slot_id,
+				to_slot_id
 			)
 
-			var replaced: CardInstance = \
-				bot.board.get_card(to_slot_id)
-
-			if replaced != null:
-				improvement += _card_danger_score(
-					state,
-					bot,
-					opponent,
-					replaced,
-					to_slot_id
-				)
-				improvement -= _card_importance(
-					replaced
-				) * 0.6
-
+			# Even escaping Disable must produce a real net improvement.
+			# The current-position score already includes the Disable penalty,
+			# so no artificial +100 bonus is needed.
 			if improvement > best_improvement:
 				best_improvement = improvement
 				best_from = from_slot_id
@@ -1383,7 +1654,7 @@ func _is_legal_move_candidate(
 		- replaced.turn_played
 	)
 
-	if turns_since_played < 1:
+	if turns_since_played < 2:
 		return false
 
 	return CardGesture.can_cover(
@@ -1421,6 +1692,14 @@ func _score_existing_card_position(
 	score += _score_against_dealer(
 		state,
 		bot,
+		card,
+		slot_id
+	)
+
+	score += _score_dealer_pvp_consequence(
+		state,
+		bot,
+		opponent,
 		card,
 		slot_id
 	)
@@ -1563,6 +1842,113 @@ func _card_importance(card: CardInstance) -> float:
 	value += float(card.shield_count) * 2.0
 
 	return value
+
+
+func _score_dealer_pvp_consequence(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	card: CardInstance,
+	slot_id: int
+) -> float:
+	# This upgrade is intentionally FAIR-only so Hardcore behavior stays
+	# otherwise unchanged.
+	if is_hardcore_mode():
+		return 0.0
+
+	if (
+		state == null
+		or state.dealer == null
+		or bot == null
+		or opponent == null
+		or card == null
+		or card.definition == null
+	):
+		return 0.0
+
+	# Take the strongest consequence in this lane instead of stacking duplicate
+	# middle Dealer cards that represent the same lane rule.
+	var loss_penalty: float = 0.0
+
+	for dealer_slot_id: int in _get_dealer_target_slots(
+		state,
+		bot,
+		card,
+		slot_id
+	):
+		var dealer_card: CardInstance = 			state.dealer.slots.get(
+				dealer_slot_id,
+				null
+			) as CardInstance
+
+		if (
+			dealer_card == null
+			or dealer_card.definition == null
+		):
+			continue
+
+		var dealer_behavior: DealerCardBehavior = 			dealer_card.definition.dealer_behavior
+
+		if dealer_behavior == null:
+			continue
+
+		if not dealer_behavior.has_method(
+			"get_ai_pvp_loss_penalty"
+		):
+			continue
+
+		var raw_penalty: Variant = dealer_behavior.call(
+			"get_ai_pvp_loss_penalty"
+		)
+
+		loss_penalty = maxf(
+			loss_penalty,
+			float(raw_penalty)
+		)
+
+	if loss_penalty <= 0.0:
+		return 0.0
+
+	var result: float = 0.0
+	var known_targets: int = 0
+
+	for target_slot_id: int in 			_get_opponent_target_slots(slot_id):
+		var target: CardInstance = 			_get_visible_opponent_card(
+				state,
+				opponent,
+				target_slot_id
+			)
+
+		if target == null or target.definition == null:
+			continue
+
+		known_targets += 1
+
+		var outcome: int = _compare_gestures(
+			card.definition.gesture,
+			target.definition.gesture
+		)
+
+		if outcome == BattleAct.Outcome.LOSS:
+			# Losing a valuable bot card in a permanent-loss lane is very bad.
+			result -= loss_penalty * (
+				1.0
+				+ _card_importance(card) * 0.10
+			)
+		elif outcome == BattleAct.Outcome.WIN:
+			# Conversely, winning there can permanently punish a known enemy card.
+			result += loss_penalty * 0.45
+			result += _card_importance(target) * 0.35
+
+	# With no publicly-known enemy identity the Fair bot must NOT peek.
+	# It only applies a small uncertainty tax, especially to valuable cards.
+	if known_targets == 0:
+		result -= loss_penalty * (
+			0.08
+			+ _card_importance(card) * 0.015
+		)
+
+	return result
 
 
 func _get_opponent_target_slots(

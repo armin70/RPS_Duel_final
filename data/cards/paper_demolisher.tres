@@ -16,6 +16,7 @@ card_id = &"paper_demolisher"
 display_name = "paper_demolisher"
 gesture = 1
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_7v85t")
 info_image = ExtResource("3_uink0")
 placed_vfx = ExtResource("99_vfx1")

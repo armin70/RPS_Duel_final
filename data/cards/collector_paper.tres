@@ -17,6 +17,7 @@ card_id = &"collector_paper"
 display_name = "Paper Collector"
 gesture = 1
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_7io8t")
 info_image = ExtResource("4_fj2ib")
 ability_vfx = ExtResource("99_vfx1")

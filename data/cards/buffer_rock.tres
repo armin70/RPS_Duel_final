@@ -16,6 +16,7 @@ script = ExtResource("1_roeyu")
 card_id = &"buffer_rock"
 display_name = "buffer_rock"
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_nr46n")
 info_image = ExtResource("3_4s7n7")
 placed_vfx = ExtResource("3_7q80n")

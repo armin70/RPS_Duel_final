@@ -18,6 +18,7 @@ card_id = &"disabler_scissors"
 display_name = "disabler scissors"
 gesture = 2
 mana_cost = 5
+rarity = 1
 front_texture = ExtResource("2_dw1ed")
 info_image = ExtResource("3_hdnfu")
 placed_vfx = ExtResource("99_vfx1")

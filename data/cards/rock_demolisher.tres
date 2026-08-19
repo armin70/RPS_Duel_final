@@ -15,6 +15,7 @@ script = ExtResource("1_wdtk8")
 card_id = &"rock_demolisher"
 display_name = "rock demolisher"
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("1_0ysfg")
 info_image = ExtResource("3_g0lkr")
 placed_vfx = ExtResource("99_vfx1")

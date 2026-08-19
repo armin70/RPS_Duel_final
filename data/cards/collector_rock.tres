@@ -15,6 +15,7 @@ script = ExtResource("1_wckn4")
 card_id = &"collector_rock"
 display_name = "Rock Collector"
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_xxbps")
 info_image = ExtResource("4_of2jk")
 ability_vfx = ExtResource("99_vfx1")

@@ -17,6 +17,7 @@ card_id = &"buffer_scissors"
 display_name = "buffer_scissors"
 gesture = 2
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_m2nyl")
 info_image = ExtResource("3_y4slj")
 placed_vfx = ExtResource("3_xv6ac")

@@ -16,6 +16,7 @@ card_id = &"chainsaw"
 display_name = "chainsaw"
 gesture = 2
 mana_cost = 4
+rarity = 1
 front_texture = ExtResource("2_wje6b")
 info_image = ExtResource("4_yuiqf")
 ability_vfx = ExtResource("1_53wot")

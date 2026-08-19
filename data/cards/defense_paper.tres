@@ -15,6 +15,7 @@ card_id = &"defense_paper"
 display_name = "Defense Paper"
 gesture = 1
 mana_cost = 3
+rarity = 1
 front_texture = ExtResource("2_oh0ns")
 info_image = ExtResource("3_0em6d")
 behavior = SubResource("Resource_0em6d")

@@ -10,6 +10,12 @@ const SLOT_COLLISION_MASK: int = 2
 const CARD_DETAIL_OVERLAY_SCRIPT: Script = preload(
 	"res://game/ui/card_detail_overlay.gd"
 )
+const DECK_SELECTION_SCREEN_SCRIPT: Script = preload(
+	"res://game/deck_builder/deck_selection_screen.gd"
+)
+const DEFAULT_DECK_BUILDER_SETTINGS: DeckBuilderSettings = preload(
+	"res://data/deck_builder/default_deck_builder_settings.tres"
+)
 const COMBAT_RESULT_VFX_SCRIPT: Script = preload(
 	"res://game/vfx/combat_result_vfx_3d.gd"
 )
@@ -55,6 +61,8 @@ var collector_pull_delay: float = 0.20
 @export var deck_one_preview_card: CardDefinition
 @export var deck_two_preview_card: CardDefinition
 @export var deck_three_preview_card: CardDefinition
+@export var deck_builder_settings: DeckBuilderSettings = \
+	DEFAULT_DECK_BUILDER_SETTINGS
 
 @export_range(1.0, 6.0, 0.1)
 var deck_choice_distance: float = 2.6
@@ -165,6 +173,7 @@ var pending_bot_plays: Array[CardPlayRecord] = []
 
 var deck_selection_active: bool = false
 var deck_choice_cards: Array[Card3D] = []
+var deck_selection_screen: DeckSelectionScreen
 var tutorial_controller: TutorialController
 var card_detail_overlay: CardDetailOverlay
 
@@ -337,7 +346,65 @@ func begin_deck_selection() -> void:
 	hud.visible = false
 	hud.set_interaction_enabled(false)
 
-	call_deferred("_spawn_deck_choice_cards")
+	_show_deck_selection_screen()
+
+
+func _show_deck_selection_screen() -> void:
+	if is_instance_valid(deck_selection_screen):
+		return
+
+	var decks: Array[DeckDefinition] = [
+		player_one_deck,
+		player_one_deck_2,
+		player_one_deck_3
+	]
+
+	var preview_overrides: Array[CardDefinition] = [
+		deck_one_preview_card,
+		deck_two_preview_card,
+		deck_three_preview_card
+	]
+
+	deck_selection_screen = \
+		DECK_SELECTION_SCREEN_SCRIPT.new() as DeckSelectionScreen
+
+	if deck_selection_screen == null:
+		push_error("Could not create DeckSelectionScreen.")
+		return
+
+	deck_selection_screen.configure(
+		deck_builder_settings,
+		decks,
+		preview_overrides
+	)
+	deck_selection_screen.deck_selected.connect(
+		Callable(self, "_on_deck_definition_selected")
+	)
+	add_child(deck_selection_screen)
+
+
+func _on_deck_definition_selected(
+	selected_deck: DeckDefinition
+) -> void:
+	if not deck_selection_active:
+		return
+
+	if selected_deck == null:
+		return
+
+	deck_selection_active = false
+	interaction_locked = true
+
+	if is_instance_valid(deck_selection_screen):
+		deck_selection_screen.queue_free()
+		deck_selection_screen = null
+
+	_clear_deck_choice_cards()
+	await get_tree().process_frame
+
+	await _start_match_with_selected_deck(
+		selected_deck
+	)
 
 
 func _spawn_deck_choice_cards() -> void:
@@ -572,6 +639,10 @@ func _start_match_with_selected_deck(
 		if tutorial_controller != null:
 			tutorial_controller.prepare_match_state()
 
+	# FAIR Bot فقط وضعیت عمومی ابتدای Turn را به خاطر می‌سپارد.
+	# هر Play یا Move مخفی بعد از این نقطه برای Fair قابل مشاهده نیست.
+	_capture_fair_bot_knowledge()
+
 	await _sync_visual_state()
 
 	hud.visible = true
@@ -622,6 +693,19 @@ func play_tutorial_collector_vfx_now() -> void:
 	# after it is placed. Reuse the project's existing Collector VFX sequence;
 	# TutorialController performs the tutorial-only state change afterwards.
 	await _play_collector_vfx_before_combat()
+
+
+func _capture_fair_bot_knowledge() -> void:
+	if bot_controller == null:
+		return
+
+	if state == null:
+		return
+
+	bot_controller.capture_fair_opponent_snapshot(
+		state,
+		local_player_id
+	)
 
 
 func _prepare_bot_turn() -> void:
@@ -746,8 +830,9 @@ func _on_end_turn_pressed() -> void:
 	if player.is_ready:
 		return
 
-	# Bot now plans after the player locks the turn, so it can
-	# react to the player cards that were placed this turn.
+	# Bot بعد از قفل‌شدن Turn تصمیم می‌گیرد.
+	# FAIR فقط Snapshot عمومی ابتدای Turn را می‌بیند؛
+	# کارت جدید و Move مخفی همین Turn برایش قابل شناسایی نیست.
 	_prepare_bot_turn()
 
 	var success: bool = engine.set_player_ready(
@@ -1219,7 +1304,14 @@ func _play_new_dealer_placed_vfx(
 
 		if card.definition == null:
 			continue
-
+		if (
+			card.definition.dealer_notice_texture
+			!= null
+		):
+			hud.show_dealer_notice(
+				card.definition.dealer_notice_texture,
+				card.definition.dealer_notice_duration
+			)
 		# این کارت اصلاً Placed VFX ندارد.
 		if card.definition.placed_vfx == null:
 			continue
@@ -1504,6 +1596,12 @@ func _input(event: InputEvent) -> void:
 	# Deck selection is handled directly by screen position.
 	# This does not depend on Card3D's collider or drag signal.
 	if deck_selection_active:
+		# The new deck screen uses normal Control input. Do not consume the
+		# event here or its buttons will never receive it. The old 3D picker is
+		# kept below as a safe fallback for older serialized scenes.
+		if is_instance_valid(deck_selection_screen):
+			return
+
 		if event is InputEventMouseButton:
 			if (
 				event.button_index == MOUSE_BUTTON_LEFT
@@ -1980,6 +2078,10 @@ func _resources_are_valid() -> bool:
 		push_error("Player deck choice 3 is missing.")
 		return false
 
+	if deck_builder_settings == null:
+		push_error("Deck builder settings are missing.")
+		return false
+
 	if player_two_deck == null:
 		push_error("Player two deck is missing.")
 		return false
@@ -2310,6 +2412,10 @@ func _start_animated_combat() -> void:
 
 	if tutorial_controller != null and tutorial_controller.is_active():
 		tutorial_controller.prepare_new_turn_state()
+
+	# Turn جدید کامل ساخته شده ولی Player هنوز حرکت مخفی انجام نداده.
+	# این وضعیت، حافظه عمومی Fair Bot برای کل این Turn است.
+	_capture_fair_bot_knowledge()
 
 	await _sync_visual_state()
 	# هر Dealer card جدیدی که Placed VFX دارد، الان افکتش را پخش کن.

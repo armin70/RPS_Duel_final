@@ -16,6 +16,7 @@ card_id = &"killer_paper"
 display_name = "killer paper"
 gesture = 1
 mana_cost = 4
+rarity = 1
 front_texture = ExtResource("2_o1oyn")
 info_image = ExtResource("3_jvud2")
 placed_vfx = ExtResource("99_vfx1")

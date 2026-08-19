@@ -59,6 +59,7 @@ metadata/_custom_type_script = "uid://dcjdk55xiluso"
 [sub_resource type="Resource" id="Resource_euo7u"]
 script = ExtResource("1_771lj")
 card = ExtResource("10_l1d0f")
+copies = 2
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [resource]

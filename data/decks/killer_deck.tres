@@ -60,6 +60,7 @@ metadata/_custom_type_script = "uid://dcjdk55xiluso"
 [sub_resource type="Resource" id="Resource_pfaa1"]
 script = ExtResource("1_ftnn2")
 card = ExtResource("10_evym3")
+copies = 2
 metadata/_custom_type_script = "uid://dcjdk55xiluso"
 
 [resource]
