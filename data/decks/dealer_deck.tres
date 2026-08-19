@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://dsgb7xp50w70e" path="res://core/cards/deck_definition.gd" id="2_sv1tf"]
 [ext_resource type="Resource" uid="uid://sq3fr62qtyve" path="res://data/cards/dealer_paper.tres" id="3_ce0ty"]
 [ext_resource type="Resource" uid="uid://cn145dmt3xx7d" path="res://data/cards/dealer_scissors.tres" id="4_yf7s1"]
-[ext_resource type="Resource" path="res://data/cards/gladiator_div.tres" id="6_gladiator"]
+[ext_resource type="Resource" uid="uid://n3xfaahlc72a" path="res://data/cards/gladiator_div.tres" id="6_gladiator"]
 
 [sub_resource type="Resource" id="Resource_yf7s1"]
 script = ExtResource("1_nf12s")

@@ -17,6 +17,6 @@ gesture = 3
 front_texture = ExtResource("2_37kk5")
 info_image = ExtResource("2_013nc")
 dealer_notice_texture = ExtResource("2_013nc")
-dealer_notice_duration = 4.5
+dealer_notice_duration = 10.0
 placed_vfx = ExtResource("4_vfx")
 dealer_behavior = SubResource("GladiatorBehavior")
