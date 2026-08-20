@@ -12,6 +12,8 @@ signal end_turn_pressed
 @onready var turn_label: Label = $Root/PlayerInfo/TurnLabel
 @onready var player_score_label: Label = $Root/PlayerInfo/PlayerScoreLabel
 @onready var opponent_score_label: Label = $Root/PlayerInfo/OpponentScoreLabel
+@onready var player_mana_panel: Control = \
+	$Root/PlayerManaPanel
 @onready var player_mana_label: Label = \
 	$Root/PlayerManaPanel/PlayerManaLabel
 @onready var opponent_mana_label: Label = $Root/PlayerInfo/OpponentManaLabel
@@ -50,6 +52,26 @@ var dealer_notice_tween: Tween
 @export var music_off_texture: Texture2D
 @export var survey_url: String = ""
 var exit_confirmation: ConfirmationDialog
+
+@export_category("Low Mana Feedback")
+@export var low_mana_message: String = "Not enough mana"
+@export_range(20, 150, 5)
+var low_mana_vibration_ms: int = 45
+@export_range(0.2, 2.0, 0.05)
+var low_mana_message_duration: float = 0.75
+
+var low_mana_toast: Label
+var low_mana_toast_tween: Tween
+var low_mana_visual_tween: Tween
+
+# Prefer the whole PlayerManaPanel so its background texture and text
+# shake / flash together. If the scene does not have that wrapper,
+# fall back safely to the Mana label only.
+var player_mana_visual: Control
+var player_mana_base_modulate: Color = Color.WHITE
+var player_mana_base_position: Vector2 = Vector2.ZERO
+var player_mana_base_scale: Vector2 = Vector2.ONE
+var player_mana_base_rotation: float = 0.0
 
 func _ready() -> void:
 	menu_button.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -98,7 +120,225 @@ func _ready() -> void:
 		_confirm_return_to_menu
 	)
 	_build_dealer_notice()
+	_build_low_mana_feedback()
+
+	player_mana_visual = player_mana_panel
+
+	if player_mana_visual != null:
+		player_mana_base_modulate = player_mana_visual.modulate
+		player_mana_base_position = player_mana_visual.position
+		player_mana_base_scale = player_mana_visual.scale
+		player_mana_base_rotation = player_mana_visual.rotation
+		player_mana_visual.pivot_offset = player_mana_visual.size * 0.5
 	
+func _build_low_mana_feedback() -> void:
+	# No box around Mana. The Mana label itself is the feedback target.
+	low_mana_toast = Label.new()
+	low_mana_toast.name = "LowManaToast"
+	low_mana_toast.text = low_mana_message
+	low_mana_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	low_mana_toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	low_mana_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	low_mana_toast.z_index = 100
+	low_mana_toast.visible = false
+	low_mana_toast.add_theme_font_size_override("font_size", 19)
+	low_mana_toast.add_theme_color_override(
+		"font_color",
+		Color(1.0, 0.84, 0.76, 1.0)
+	)
+	low_mana_toast.add_theme_color_override(
+		"font_outline_color",
+		Color(0.10, 0.025, 0.02, 0.88)
+	)
+	low_mana_toast.add_theme_constant_override("outline_size", 5)
+	add_child(low_mana_toast)
+
+
+func _layout_low_mana_feedback() -> void:
+	if low_mana_toast == null:
+		return
+
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var toast_width: float = minf(280.0, viewport_size.x * 0.48)
+	low_mana_toast.size = Vector2(toast_width, 42.0)
+	low_mana_toast.pivot_offset = low_mana_toast.size * 0.5
+
+	var mana_target: Control = player_mana_visual
+	if mana_target == null:
+		mana_target = player_mana_label
+
+	if mana_target == null:
+		low_mana_toast.position = Vector2(
+			(viewport_size.x - toast_width) * 0.5,
+			viewport_size.y * 0.72
+		)
+		return
+
+	var mana_rect: Rect2 = mana_target.get_global_rect()
+	var toast_x: float = clampf(
+		mana_rect.get_center().x - toast_width * 0.5,
+		8.0,
+		maxf(8.0, viewport_size.x - toast_width - 8.0)
+	)
+	var toast_y: float = maxf(
+		8.0,
+		mana_rect.position.y - 46.0
+	)
+	low_mana_toast.position = Vector2(toast_x, toast_y)
+
+
+func show_low_mana_feedback() -> void:
+	_layout_low_mana_feedback()
+
+	if low_mana_toast_tween != null:
+		if low_mana_toast_tween.is_valid():
+			low_mana_toast_tween.kill()
+
+	if low_mana_visual_tween != null:
+		if low_mana_visual_tween.is_valid():
+			low_mana_visual_tween.kill()
+
+	# Small warning close to the Mana display.
+	if low_mana_toast != null:
+		low_mana_toast.text = low_mana_message
+		low_mana_toast.visible = true
+		low_mana_toast.modulate.a = 0.0
+		low_mana_toast.position.y += 5.0
+
+		low_mana_toast_tween = create_tween()
+		low_mana_toast_tween.tween_property(
+			low_mana_toast,
+			"modulate:a",
+			1.0,
+			0.07
+		)
+		low_mana_toast_tween.parallel().tween_property(
+			low_mana_toast,
+			"position:y",
+			low_mana_toast.position.y - 5.0,
+			0.10
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		low_mana_toast_tween.tween_interval(
+			maxf(0.05, low_mana_message_duration - 0.17)
+		)
+		low_mana_toast_tween.tween_property(
+			low_mana_toast,
+			"modulate:a",
+			0.0,
+			0.10
+		)
+		low_mana_toast_tween.tween_callback(
+			low_mana_toast.hide
+		)
+
+	# Shake + flash the ENTIRE Mana visual (background texture + number/text).
+	if player_mana_visual != null:
+		player_mana_visual.modulate = player_mana_base_modulate
+		player_mana_visual.position = player_mana_base_position
+		player_mana_visual.scale = player_mana_base_scale
+		player_mana_visual.rotation = player_mana_base_rotation
+		player_mana_visual.pivot_offset = player_mana_visual.size * 0.5
+
+		var warning_color := Color(1.0, 0.30, 0.11, 1.0)
+		low_mana_visual_tween = create_tween()
+
+		# First hit: quick flash + right kick + tiny pop.
+		low_mana_visual_tween.tween_property(
+			player_mana_visual,
+			"position:x",
+			player_mana_base_position.x + 8.0,
+			0.040
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"rotation",
+			player_mana_base_rotation + 0.055,
+			0.040
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"modulate",
+			warning_color,
+			0.040
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"scale",
+			player_mana_base_scale * 1.075,
+			0.050
+		).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+		# Recoil left and briefly return to its normal color.
+		low_mana_visual_tween.tween_property(
+			player_mana_visual,
+			"position:x",
+			player_mana_base_position.x - 8.0,
+			0.050
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"rotation",
+			player_mana_base_rotation - 0.050,
+			0.050
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"modulate",
+			player_mana_base_modulate,
+			0.050
+		)
+
+		# Second smaller flash.
+		low_mana_visual_tween.tween_property(
+			player_mana_visual,
+			"position:x",
+			player_mana_base_position.x + 5.0,
+			0.045
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"rotation",
+			player_mana_base_rotation + 0.032,
+			0.045
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"modulate",
+			warning_color,
+			0.045
+		)
+
+		# Settle cleanly back to the original UI state.
+		low_mana_visual_tween.tween_property(
+			player_mana_visual,
+			"position",
+			player_mana_base_position,
+			0.085
+		).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"rotation",
+			player_mana_base_rotation,
+			0.085
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"modulate",
+			player_mana_base_modulate,
+			0.085
+		)
+		low_mana_visual_tween.parallel().tween_property(
+			player_mana_visual,
+			"scale",
+			player_mana_base_scale,
+			0.085
+		)
+
+	# One subtle haptic tick on phones/tablets.
+	if OS.has_feature("android") or OS.has_feature("ios"):
+		Input.vibrate_handheld(low_mana_vibration_ms)
+
+
 func _build_dealer_notice() -> void:
 	dealer_notice_rect = TextureRect.new()
 	dealer_notice_rect.name = "DealerNotice"

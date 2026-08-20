@@ -75,6 +75,9 @@ func _run_dealer_enter_behaviors() -> void:
 			dealer_slot_id
 		)
 
+	# Dealer effects may empty a Front slot. A card directly behind it
+	# advances for free before the next placement phase starts.
+	_normalize_all_player_front_rows()
 
 
 func _setup_player(
@@ -93,6 +96,146 @@ func _setup_player(
 		player,
 		state.rules.starting_hand_size
 	)
+
+# =========================================================
+# Front-first board placement
+# =========================================================
+
+func resolve_play_slot(
+	player_id: int,
+	requested_slot_id: int
+) -> int:
+	if state == null:
+		return -1
+
+	if not SlotID.is_valid(requested_slot_id):
+		return -1
+
+	var player: PlayerState = state.get_player(
+		player_id
+	)
+
+	if player == null:
+		return -1
+
+	# Dropping directly on an occupied card remains an explicit Cover attempt.
+	# Auto-placement only redirects EMPTY destinations.
+	if player.board.get_card(requested_slot_id) != null:
+		return requested_slot_id
+
+	match SlotID.get_lane(requested_slot_id):
+		SlotID.Lane.LEFT:
+			if player.board.is_slot_empty(
+				SlotID.Type.FRONT_LEFT
+			):
+				return SlotID.Type.FRONT_LEFT
+
+			return requested_slot_id
+
+		SlotID.Lane.RIGHT:
+			if player.board.is_slot_empty(
+				SlotID.Type.FRONT_RIGHT
+			):
+				return SlotID.Type.FRONT_RIGHT
+
+			return requested_slot_id
+
+		SlotID.Lane.MIDDLE:
+			# Middle is filled visually as 1 -> 2 cards in Front,
+			# then 1 -> 2 cards in Back. Logical slots stay unchanged so
+			# combat, Dealer targeting, Disable, Cover, etc. keep working.
+			for candidate_slot_id: int in [
+				SlotID.Type.FRONT_MIDDLE_0,
+				SlotID.Type.FRONT_MIDDLE_1,
+				SlotID.Type.BACK_MIDDLE_0,
+				SlotID.Type.BACK_MIDDLE_1
+			]:
+				if player.board.is_slot_empty(
+					candidate_slot_id
+				):
+					return candidate_slot_id
+
+	return requested_slot_id
+
+
+func _promote_back_to_front(
+	player: PlayerState,
+	front_slot_id: int,
+	back_slot_id: int
+) -> bool:
+	if player == null:
+		return false
+
+	if not player.board.is_slot_empty(front_slot_id):
+		return false
+
+	var card: CardInstance = player.board.get_card(
+		back_slot_id
+	)
+
+	if card == null:
+		return false
+
+	var moved: bool = player.board.move_card(
+		back_slot_id,
+		front_slot_id
+	)
+
+	if moved:
+		print(
+			"AUTO FRONT PROMOTION | player=",
+			player.player_id,
+			" | card=",
+			card.definition.display_name if card.definition != null else "Card",
+			" | from=",
+			back_slot_id,
+			" | to=",
+			front_slot_id
+		)
+
+	return moved
+
+
+func _normalize_player_front_rows(
+	player: PlayerState
+) -> void:
+	if player == null:
+		return
+
+	# Each logical column is independent. We never move a MIDDLE_1 back card
+	# into MIDDLE_0 (or vice versa), so PvP / Dealer column identity is stable.
+	for pair: Vector2i in [
+		Vector2i(
+			SlotID.Type.FRONT_LEFT,
+			SlotID.Type.BACK_LEFT
+		),
+		Vector2i(
+			SlotID.Type.FRONT_MIDDLE_0,
+			SlotID.Type.BACK_MIDDLE_0
+		),
+		Vector2i(
+			SlotID.Type.FRONT_MIDDLE_1,
+			SlotID.Type.BACK_MIDDLE_1
+		),
+		Vector2i(
+			SlotID.Type.FRONT_RIGHT,
+			SlotID.Type.BACK_RIGHT
+		)
+	]:
+		_promote_back_to_front(
+			player,
+			pair.x,
+			pair.y
+		)
+
+
+func _normalize_all_player_front_rows() -> void:
+	if state == null:
+		return
+
+	_normalize_player_front_rows(state.player_one)
+	_normalize_player_front_rows(state.player_two)
+
 
 func play_card(
 	player_id: int,
@@ -123,6 +266,16 @@ func play_card(
 
 	if not player.hand.has(card):
 		return false
+
+	if not SlotID.is_valid(slot_id):
+		return false
+
+	# Empty destinations are front-first. If the player releases a card over
+	# Back while that column still needs a Front card, it snaps to Front.
+	slot_id = resolve_play_slot(
+		player_id,
+		slot_id
+	)
 
 	if not SlotID.is_valid(slot_id):
 		return false
@@ -232,10 +385,18 @@ func play_card(
 		card.definition.behavior.on_played_to_board(
 			play_context
 		)
+
+	# A play ability (for example lane-discard) may have emptied Front.
+	_normalize_player_front_rows(player)
+
+	var final_slot_id: int = slot_id
+	if SlotID.is_valid(card.current_slot):
+		final_slot_id = card.current_slot
+
 	_record_completed_play(
 		player_id,
 		card,
-		slot_id,
+		final_slot_id,
 		board_before
 	)
 
@@ -372,17 +533,25 @@ func move_board_card(
 		)
 		return false
 
+	# Moving a Front card away is legal even if a Back card was behind it.
+	# The Back card simply advances for free.
+	_normalize_player_front_rows(player)
+
 	player.current_mana -= \
 		BOARD_MOVE_MANA_COST
 
 	player.board_move_used_turn = \
 		state.turn_number
 
+	var final_move_slot_id: int = to_slot_id
+	if SlotID.is_valid(moving_card.current_slot):
+		final_move_slot_id = moving_card.current_slot
+
 	_record_completed_board_move(
 		player_id,
 		moving_card,
 		from_slot_id,
-		to_slot_id,
+		final_move_slot_id,
 		board_before
 	)
 
@@ -512,6 +681,10 @@ func _run_start_combat_behaviors() -> void:
 		card.definition.behavior.on_start_combat(
 			context
 		)
+
+	# Start-combat abilities may remove cards from Front. Repack before the
+	# battle sequence is built so combat reads the final board correctly.
+	_normalize_all_player_front_rows()
 
 
 func set_player_ready(player_id: int) -> bool:
@@ -935,6 +1108,9 @@ func finish_combat() -> bool:
 	# دو بازیکن در همان لاین بعد از Combat از زمین خارج می‌شوند.
 	_resolve_dealer_lane_losers()
 
+	# Cleanup is complete. Any survivor directly behind an empty Front advances.
+	_normalize_all_player_front_rows()
+
 	var dealer_ready: bool = \
 		DealerMover.deal_new_board(
 			state.dealer
@@ -1042,20 +1218,8 @@ func _can_move_in_row_order(
 	if player == null:
 		return false
 
-	# اگر از ردیف جلو حرکت می‌کنیم و پشت همان ستون
-	# کارت وجود دارد، اجازه نداریم جلوی آن را خالی کنیم.
-	var matching_back_slot: int = \
-		_get_matching_back_slot(
-			from_slot_id
-		)
-
-	if (
-		matching_back_slot != -1
-		and player.board.get_card(
-			matching_back_slot
-		) != null
-	):
-		return false
+	# A Front card may move away even when a Back card is behind it.
+	# _normalize_player_front_rows() immediately advances that Back card.
 
 	var required_front_slot: int = \
 		_get_required_front_slot(
@@ -1128,6 +1292,27 @@ func _snapshot_board_cards(
 	return result
 
 
+func _snapshot_board_slot_ids(
+	player: PlayerState
+) -> Dictionary:
+	var result: Dictionary = {}
+
+	if player == null:
+		return result
+
+	for slot_id: int in SlotID.all_slots():
+		var card: CardInstance = player.board.get_card(
+			slot_id
+		)
+
+		if card == null:
+			continue
+
+		result[card.instance_id] = slot_id
+
+	return result
+
+
 func _is_card_still_on_board(
 	player: PlayerState,
 	target_card: CardInstance
@@ -1192,6 +1377,9 @@ func _record_completed_play(
 			played_card
 		)
 
+	record.board_slots_after = \
+		_snapshot_board_slot_ids(player)
+
 	var stored_records: Array = \
 		play_records_by_player.get(
 			player_id,
@@ -1241,6 +1429,9 @@ func _record_completed_board_move(
 			record.removed_cards.append(
 				previous_card
 			)
+
+	record.board_slots_after = \
+		_snapshot_board_slot_ids(player)
 
 	var stored_records: Array = \
 		play_records_by_player.get(

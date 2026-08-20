@@ -101,6 +101,28 @@ var local_player_id: int = 1
 
 @export var drag_plane_height: float = 0.25
 
+@export_category("Low Mana Drag Feedback")
+@export_range(0.20, 0.70, 0.05)
+var low_mana_reject_distance_ratio: float = 0.45
+@export_range(0.20, 1.20, 0.05)
+var low_mana_reject_max_distance: float = 0.65
+@export_range(0.03, 0.20, 0.01)
+var low_mana_reject_out_time: float = 0.08
+@export_range(0.05, 0.30, 0.01)
+var low_mana_reject_return_time: float = 0.14
+
+@export_category("Cover Feedback")
+@export_range(20, 120, 5)
+var invalid_cover_vibration_ms: int = 35
+@export_range(0.05, 0.30, 0.01)
+var invalid_cover_flash_time: float = 0.14
+@export_range(0.05, 0.35, 0.01)
+var invalid_cover_return_time: float = 0.16
+
+@export_category("Board Placement")
+@export_range(0.05, 0.5, 0.01)
+var board_reflow_time: float = 0.16
+
 
 @export_category("Bot and Reveal")
 @export var bot_think_time: float = 0.3
@@ -167,6 +189,14 @@ var interaction_locked: bool = false
 var card_views: Dictionary = {}
 var opponent_hand_views: Dictionary = {}
 var dragged_card: Card3D
+
+# Last PUBLIC board position for each card. Bot state can already contain
+# hidden current-turn actions, so visuals must not read those positions early.
+var visual_board_slots: Dictionary = {
+	1: {},
+	2: {}
+}
+var highlighted_drop_place: CardPlace3D
 
 var pending_local_cards: Array[CardInstance] = []
 var pending_bot_plays: Array[CardPlayRecord] = []
@@ -946,17 +976,47 @@ func _reveal_bot_play(
 		await _reveal_bot_board_move(
 			play_record
 		)
+
+		_apply_visual_board_snapshot(
+			bot_player_id,
+			play_record.board_slots_after
+		)
+		await _refresh_board_card_positions(
+			bot_player_id,
+			true
+		)
 		return
 
-	# اول خود کارت Bot وارد زمین می‌شود.
-	await _reveal_bot_card(
-		play_record.card,
-		play_record.slot_id
+	# For a new middle card, move already-visible survivors to their new
+	# public positions first. The new hidden card itself has no Card3D yet.
+	_apply_visual_board_snapshot(
+		bot_player_id,
+		play_record.board_slots_after
+	)
+	await _refresh_board_card_positions(
+		bot_player_id,
+		true
 	)
 
-	# بعد حذف‌ها / Coverهای مربوط به همان Play نمایش داده می‌شوند.
+	# Then reveal the new card at the position for THIS action snapshot only.
+	await _reveal_bot_card(
+		play_record.card,
+		play_record.slot_id,
+		play_record.board_slots_after
+	)
+
+	# Cover / ability removals for this exact play are shown now.
 	await _reveal_removed_card_views(
 		play_record.removed_cards
+	)
+
+	_apply_visual_board_snapshot(
+		bot_player_id,
+		play_record.board_slots_after
+	)
+	await _refresh_board_card_positions(
+		bot_player_id,
+		true
 	)
 
 
@@ -989,7 +1049,11 @@ func _reveal_bot_board_move(
 	)
 
 	var target_transform: Transform3D = \
-		target_place.card_anchor.global_transform
+		_get_board_visual_transform_from_snapshot(
+			bot_player_id,
+			play_record.slot_id,
+			play_record.board_slots_after
+		)
 	var start_position: Vector3 = \
 		card_view.global_position
 	var target_position: Vector3 = \
@@ -1065,7 +1129,8 @@ func _pulse_existing_card(
 
 func _reveal_bot_card(
 	card: CardInstance,
-	slot_id: int
+	slot_id: int,
+	board_slots_after: Dictionary = {}
 ) -> void:
 	var place: CardPlace3D = game_layout.get_board_place(
 		bot_player_id,
@@ -1077,7 +1142,11 @@ func _reveal_bot_card(
 		return
 
 	var target_transform: Transform3D = \
-		place.card_anchor.global_transform
+		_get_board_visual_transform_from_snapshot(
+			bot_player_id,
+			slot_id,
+			board_slots_after
+		)
 
 	var card_view := opponent_hand_views.get(
 		card.instance_id,
@@ -1191,7 +1260,14 @@ func _find_card_slot(
 
 
 func _sync_visual_state() -> void:
+	_clear_drop_highlight()
 	dragged_card = null
+
+	visual_board_slots = {
+		1: {},
+		2: {}
+	}
+	_rebuild_visual_board_slots_from_state()
 
 	for child: Node in runtime_cards.get_children():
 		child.queue_free()
@@ -1403,10 +1479,16 @@ func _spawn_board_cards(
 			player_id == local_player_id
 		)
 
+		var visual_transform: Transform3D = \
+			_get_current_board_visual_transform(
+				player_id,
+				slot_id
+			)
+
 		var card_view: Card3D = \
 			_create_card_view(
 				card,
-				place.card_anchor.global_transform,
+				visual_transform,
 				draggable
 			)
 
@@ -1521,6 +1603,7 @@ func _on_card_inspect_requested(
 		card_view.return_home()
 		dragged_card = null
 		pointer_has_dragged = false
+		_clear_drop_highlight()
 
 	_ensure_card_detail_overlay()
 
@@ -1746,6 +1829,12 @@ func _update_pointer_drag(
 		if drag_distance < TAP_DRAG_THRESHOLD:
 			return
 
+		# A card the player cannot afford gives immediate mobile feedback:
+		# it moves part-way toward the finger, snaps back, pulses Mana,
+		# shows a tiny warning, and gives one short vibration.
+		if _reject_drag_for_low_mana(screen_position):
+			return
+
 		pointer_has_dragged = true
 
 	_move_dragged_card(
@@ -1762,6 +1851,7 @@ func _finish_pointer_interaction(
 	if not pointer_has_dragged:
 		var tapped_card: Card3D = dragged_card
 		dragged_card = null
+		_clear_drop_highlight()
 
 		_toggle_keep_card(
 			tapped_card
@@ -1820,34 +1910,161 @@ func _toggle_keep_card(
 	card_view.set_keep_selected(true)
 
 
-func _move_dragged_card(
+func _get_drag_world_point(
 	screen_position: Vector2
-) -> void:
-	var ray_origin: Vector3 = \
-		camera_3d.project_ray_origin(
-			screen_position
-		)
+) -> Variant:
+	if camera_3d == null:
+		return null
 
-	var ray_direction: Vector3 = \
-		camera_3d.project_ray_normal(
-			screen_position
-		)
-
+	var ray_origin: Vector3 = camera_3d.project_ray_origin(
+		screen_position
+	)
+	var ray_direction: Vector3 = camera_3d.project_ray_normal(
+		screen_position
+	)
 	var drag_plane := Plane(
 		Vector3.UP,
 		drag_plane_height
 	)
 
-	var intersection: Variant = \
-		drag_plane.intersects_ray(
-			ray_origin,
-			ray_direction
+	return drag_plane.intersects_ray(
+		ray_origin,
+		ray_direction
+	)
+
+
+func _get_drag_required_mana(
+	card: CardInstance
+) -> int:
+	if card == null:
+		return 0
+
+	if card.zone == CardZone.Type.HAND:
+		if card.definition == null:
+			return 0
+		return maxi(0, card.definition.mana_cost)
+
+	if card.zone == CardZone.Type.BOARD:
+		return MatchEngine.BOARD_MOVE_MANA_COST
+
+	return 0
+
+
+func _reject_drag_for_low_mana(
+	screen_position: Vector2
+) -> bool:
+	if dragged_card == null:
+		return false
+
+	if state == null:
+		return false
+
+	var card_view: Card3D = dragged_card
+	var card: CardInstance = card_view.card_instance
+
+	if card == null:
+		return false
+
+	var required_mana: int = _get_drag_required_mana(card)
+	if required_mana <= 0:
+		return false
+
+	var player: PlayerState = state.get_player(
+		local_player_id
+	)
+	if player == null:
+		return false
+
+	if player.current_mana >= required_mana:
+		return false
+
+	# Consume this drag gesture so release cannot turn into a tap/keep action.
+	dragged_card = null
+	pointer_has_dragged = false
+	pointer_start_position = Vector2.ZERO
+	_clear_drop_highlight()
+
+	_animate_low_mana_reject(
+		card_view,
+		screen_position
+	)
+
+	if hud != null:
+		hud.show_low_mana_feedback()
+
+	return true
+
+
+func _animate_low_mana_reject(
+	card_view: Card3D,
+	screen_position: Vector2
+) -> void:
+	if card_view == null:
+		return
+	if not is_instance_valid(card_view):
+		return
+
+	var start_transform: Transform3D = card_view.global_transform
+	var reject_transform: Transform3D = start_transform
+	var world_point: Variant = _get_drag_world_point(
+		screen_position
+	)
+
+	if world_point != null:
+		var target_position: Vector3 = world_point as Vector3
+		var travel: Vector3 = target_position - start_transform.origin
+
+		if travel.length() > low_mana_reject_max_distance:
+			travel = travel.normalized() * low_mana_reject_max_distance
+
+		reject_transform.origin = (
+			start_transform.origin
+			+ travel * low_mana_reject_distance_ratio
 		)
+		reject_transform.origin.y += 0.035
+	else:
+		reject_transform.origin += Vector3(0.0, 0.05, -0.10)
+
+	var reject_tween: Tween = create_tween()
+	reject_tween.tween_property(
+		card_view,
+		"global_transform",
+		reject_transform,
+		low_mana_reject_out_time
+	).set_trans(
+		Tween.TRANS_QUAD
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	reject_tween.tween_property(
+		card_view,
+		"global_transform",
+		start_transform,
+		low_mana_reject_return_time
+	).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	reject_tween.tween_callback(
+		Callable(card_view, "return_home")
+	)
+
+
+func _move_dragged_card(
+	screen_position: Vector2
+) -> void:
+	var intersection: Variant = _get_drag_world_point(
+		screen_position
+	)
 
 	if intersection == null:
 		return
 
 	dragged_card.global_position = intersection
+	_update_drop_highlight(screen_position)
 
 func _finish_card_drag(
 	screen_position: Vector2
@@ -1856,6 +2073,7 @@ func _finish_card_drag(
 	dragged_card = null
 
 	if card_view == null:
+		_clear_drop_highlight()
 		return
 
 	var place: CardPlace3D = _get_place_under_mouse(
@@ -1863,18 +2081,21 @@ func _finish_card_drag(
 	)
 
 	if place == null:
+		_clear_drop_highlight()
 		card_view.return_home()
 		if tutorial_controller != null and tutorial_controller.is_active():
 			tutorial_controller.notify_wrong_action()
 		return
 
 	if place.kind != CardPlace3D.Kind.PLAYER_BOARD:
+		_clear_drop_highlight()
 		card_view.return_home()
 		if tutorial_controller != null and tutorial_controller.is_active():
 			tutorial_controller.notify_wrong_action()
 		return
 
 	if place.owner_id != local_player_id:
+		_clear_drop_highlight()
 		card_view.return_home()
 		if tutorial_controller != null and tutorial_controller.is_active():
 			tutorial_controller.notify_wrong_action()
@@ -1883,6 +2104,7 @@ func _finish_card_drag(
 	var card: CardInstance = card_view.card_instance
 
 	if card == null:
+		_clear_drop_highlight()
 		card_view.return_home()
 		return
 
@@ -1891,9 +2113,38 @@ func _finish_card_drag(
 		and tutorial_controller.is_active()
 		and not tutorial_controller.can_drop(card, place)
 	):
+		_clear_drop_highlight()
 		card_view.return_home()
 		tutorial_controller.notify_wrong_action()
 		return
+
+	var target_slot_id: int = place.logical_id
+	if card.zone == CardZone.Type.HAND:
+		target_slot_id = engine.resolve_play_slot(
+			local_player_id,
+			target_slot_id
+		)
+
+	var cover_target: CardInstance = _get_local_cover_target(
+		card,
+		target_slot_id
+	)
+
+	if (
+		cover_target != null
+		and not _can_card_cover_local_slot(
+			card,
+			target_slot_id
+		)
+	):
+		await _play_invalid_cover_feedback(
+			card_view,
+			place,
+			target_slot_id
+		)
+		return
+
+	_clear_drop_highlight()
 
 	var original_zone: CardZone.Type = card.zone
 
@@ -1901,7 +2152,7 @@ func _finish_card_drag(
 		var was_played: bool = engine.play_card(
 			local_player_id,
 			card,
-			place.logical_id
+			target_slot_id
 		)
 
 		if not was_played:
@@ -1920,13 +2171,18 @@ func _finish_card_drag(
 		_spawn_missing_local_hand_cards()
 		_refresh_pile_entities()
 
+		_sync_visual_slots_for_player(
+			local_player_id
+		)
+
 		pending_local_cards.append(
 			card
 		)
 
 		card_view.is_draggable = true
-		card_view.move_home(
-			place.card_anchor.global_transform
+		await _refresh_board_card_positions(
+			local_player_id,
+			true
 		)
 
 		var placed_vfx_duration: float = \
@@ -1947,16 +2203,20 @@ func _finish_card_drag(
 		await _refresh_hand_positions()
 
 		if tutorial_controller != null and tutorial_controller.is_active():
+			var actual_slot_id: int = target_slot_id
+			if SlotID.is_valid(card.current_slot):
+				actual_slot_id = card.current_slot
+
 			tutorial_controller.notify_successful_drop(
 				card,
 				original_zone,
-				place.logical_id
+				actual_slot_id
 			)
 		return
 
 	if original_zone == CardZone.Type.BOARD:
 		var from_slot_id: int = card.current_slot
-		var to_slot_id: int = place.logical_id
+		var to_slot_id: int = target_slot_id
 
 		var was_moved: bool = engine.move_board_card(
 			local_player_id,
@@ -1971,10 +2231,15 @@ func _finish_card_drag(
 		_remove_pile_card_views(
 			local_player_id
 		)
+		_remove_discarded_card_views()
 		_refresh_pile_entities()
 
-		card_view.move_home(
-			place.card_anchor.global_transform
+		_sync_visual_slots_for_player(
+			local_player_id
+		)
+		await _refresh_board_card_positions(
+			local_player_id,
+			true
 		)
 		_refresh_board_disabled_visuals(true)
 
@@ -1984,14 +2249,531 @@ func _finish_card_drag(
 		)
 
 		if tutorial_controller != null and tutorial_controller.is_active():
+			var actual_move_slot_id: int = place.logical_id
+			if SlotID.is_valid(card.current_slot):
+				actual_move_slot_id = card.current_slot
+
 			tutorial_controller.notify_successful_drop(
 				card,
 				original_zone,
-				place.logical_id
+				actual_move_slot_id
 			)
 		return
 
 	card_view.return_home()
+
+# =========================================================
+# Front-first placement visuals
+# =========================================================
+
+func _rebuild_visual_board_slots_from_state() -> void:
+	if state == null:
+		return
+
+	for player_id: int in [1, 2]:
+		_sync_visual_slots_for_player(player_id)
+
+
+func _sync_visual_slots_for_player(
+	player_id: int
+) -> void:
+	if state == null:
+		return
+
+	var player: PlayerState = state.get_player(
+		player_id
+	)
+
+	if player == null:
+		return
+
+	var snapshot: Dictionary = {}
+
+	for slot_id: int in SlotID.all_slots():
+		var card: CardInstance = player.board.get_card(
+			slot_id
+		)
+
+		if card == null:
+			continue
+
+		snapshot[card.instance_id] = slot_id
+
+	visual_board_slots[player_id] = snapshot
+
+
+func _apply_visual_board_snapshot(
+	player_id: int,
+	snapshot: Dictionary
+) -> void:
+	if snapshot == null or snapshot.is_empty():
+		# Empty is valid only when the board is actually empty. Do not erase a
+		# populated visual board because of an old record without snapshot data.
+		var player_slots: Dictionary = visual_board_slots.get(
+			player_id,
+			{}
+		)
+		if player_slots.is_empty():
+			visual_board_slots[player_id] = {}
+		return
+
+	visual_board_slots[player_id] = snapshot.duplicate()
+
+
+func _get_middle_row_count_from_snapshot(
+	snapshot: Dictionary,
+	row: int
+) -> int:
+	var count: int = 0
+
+	for raw_slot_id: Variant in snapshot.values():
+		var slot_id: int = int(raw_slot_id)
+
+		if not SlotID.is_valid(slot_id):
+			continue
+
+		if SlotID.get_lane(slot_id) != SlotID.Lane.MIDDLE:
+			continue
+
+		if SlotID.get_row(slot_id) != row:
+			continue
+
+		count += 1
+
+	return count
+
+
+func _get_board_visual_transform_from_snapshot(
+	player_id: int,
+	slot_id: int,
+	snapshot: Dictionary
+) -> Transform3D:
+	if not SlotID.is_valid(slot_id):
+		return Transform3D.IDENTITY
+
+	var middle_count: int = 2
+
+	if SlotID.get_lane(slot_id) == SlotID.Lane.MIDDLE:
+		middle_count = _get_middle_row_count_from_snapshot(
+			snapshot,
+			SlotID.get_row(slot_id)
+		)
+
+	return game_layout.get_board_visual_transform(
+		player_id,
+		slot_id,
+		middle_count
+	)
+
+
+func _get_current_board_visual_transform(
+	player_id: int,
+	slot_id: int
+) -> Transform3D:
+	var snapshot: Dictionary = visual_board_slots.get(
+		player_id,
+		{}
+	)
+
+	return _get_board_visual_transform_from_snapshot(
+		player_id,
+		slot_id,
+		snapshot
+	)
+
+
+func _find_instance_at_visual_slot(
+	snapshot: Dictionary,
+	slot_id: int
+) -> int:
+	for raw_instance_id: Variant in snapshot.keys():
+		if int(snapshot[raw_instance_id]) == slot_id:
+			return int(raw_instance_id)
+
+	return -1
+
+
+func _build_preview_board_snapshot(
+	card: CardInstance,
+	target_slot_id: int
+) -> Dictionary:
+	var snapshot: Dictionary = visual_board_slots.get(
+		local_player_id,
+		{}
+	).duplicate()
+
+	if card == null:
+		return snapshot
+
+	# Remove the dragged card from its old visual position when moving Board->Board.
+	if card.zone == CardZone.Type.BOARD:
+		snapshot.erase(card.instance_id)
+
+	# Cover replaces the visual card already occupying the destination.
+	var replaced_instance_id: int = _find_instance_at_visual_slot(
+		snapshot,
+		target_slot_id
+	)
+	if replaced_instance_id != -1:
+		snapshot.erase(replaced_instance_id)
+
+	snapshot[card.instance_id] = target_slot_id
+	return snapshot
+
+
+func _get_preview_board_transform(
+	card: CardInstance,
+	target_slot_id: int
+) -> Transform3D:
+	var snapshot: Dictionary = _build_preview_board_snapshot(
+		card,
+		target_slot_id
+	)
+
+	return _get_board_visual_transform_from_snapshot(
+		local_player_id,
+		target_slot_id,
+		snapshot
+	)
+
+
+func _refresh_board_card_positions(
+	player_id: int,
+	animate: bool = true
+) -> void:
+	var snapshot: Dictionary = visual_board_slots.get(
+		player_id,
+		{}
+	)
+
+	var tween: Tween
+	var has_tween: bool = false
+
+	if animate and board_reflow_time > 0.0:
+		tween = create_tween()
+		tween.set_parallel(true)
+
+	for raw_instance_id: Variant in snapshot.keys():
+		var instance_id: int = int(raw_instance_id)
+		var slot_id: int = int(snapshot[raw_instance_id])
+		var card_view := card_views.get(
+			instance_id,
+			null
+		) as Card3D
+
+		if card_view == null:
+			continue
+
+		var target_transform: Transform3D = \
+			_get_board_visual_transform_from_snapshot(
+				player_id,
+				slot_id,
+				snapshot
+			)
+
+		card_view.home_transform = target_transform
+
+		if tween != null:
+			tween.tween_property(
+				card_view,
+				"global_transform",
+				target_transform,
+				board_reflow_time
+			).set_trans(
+				Tween.TRANS_QUAD
+			).set_ease(
+				Tween.EASE_OUT
+			)
+			has_tween = true
+		else:
+			card_view.return_home()
+
+	if tween != null and has_tween:
+		await tween.finished
+
+
+func _get_feedback_required_front_slot(
+	slot_id: int
+) -> int:
+	match slot_id:
+		SlotID.Type.BACK_LEFT:
+			return SlotID.Type.FRONT_LEFT
+
+		SlotID.Type.BACK_MIDDLE_0:
+			return SlotID.Type.FRONT_MIDDLE_0
+
+		SlotID.Type.BACK_MIDDLE_1:
+			return SlotID.Type.FRONT_MIDDLE_1
+
+		SlotID.Type.BACK_RIGHT:
+			return SlotID.Type.FRONT_RIGHT
+
+	return -1
+
+
+func _can_card_cover_local_slot(
+	card: CardInstance,
+	target_slot_id: int
+) -> bool:
+	if state == null or card == null:
+		return false
+
+	if card.definition == null:
+		return false
+
+	if not SlotID.is_valid(target_slot_id):
+		return false
+
+	var player: PlayerState = state.get_player(
+		local_player_id
+	)
+	if player == null:
+		return false
+
+	if player.is_ready:
+		return false
+
+	var target_card: CardInstance = player.board.get_card(
+		target_slot_id
+	)
+	if target_card == null:
+		return false
+
+	if target_card == card:
+		return false
+
+	if target_card.definition == null:
+		return false
+
+	var turns_since_played: int = (
+		state.turn_number
+		- target_card.turn_played
+	)
+	if turns_since_played < 1:
+		return false
+
+	if not CardGesture.can_cover(
+		card.definition.gesture,
+		target_card.definition.gesture
+	):
+		return false
+
+	var required_front_slot: int = \
+		_get_feedback_required_front_slot(
+			target_slot_id
+		)
+
+	if card.zone == CardZone.Type.HAND:
+		if not player.hand.has(card):
+			return false
+
+		if player.current_mana < card.definition.mana_cost:
+			return false
+
+		if (
+			required_front_slot != -1
+			and player.board.get_card(required_front_slot) == null
+		):
+			return false
+
+		return true
+
+	if card.zone == CardZone.Type.BOARD:
+		var from_slot_id: int = card.current_slot
+		if not SlotID.is_valid(from_slot_id):
+			return false
+
+		if from_slot_id == target_slot_id:
+			return false
+
+		if player.board.get_card(from_slot_id) != card:
+			return false
+
+		if player.board_move_used_turn == state.turn_number:
+			return false
+
+		if player.current_mana < MatchEngine.BOARD_MOVE_MANA_COST:
+			return false
+
+		if required_front_slot != -1:
+			# Same rule as MatchEngine._can_move_in_row_order().
+			if from_slot_id == required_front_slot:
+				return false
+
+			if player.board.get_card(required_front_slot) == null:
+				return false
+
+		return true
+
+	return false
+
+
+func _get_local_cover_target(
+	card: CardInstance,
+	target_slot_id: int
+) -> CardInstance:
+	if state == null or card == null:
+		return null
+
+	var player: PlayerState = state.get_player(
+		local_player_id
+	)
+	if player == null:
+		return null
+
+	var target_card: CardInstance = player.board.get_card(
+		target_slot_id
+	)
+
+	if target_card == card:
+		return null
+
+	return target_card
+
+
+func _play_invalid_cover_feedback(
+	card_view: Card3D,
+	target_place: CardPlace3D,
+	target_slot_id: int
+) -> void:
+	_clear_drop_highlight()
+
+	if target_place != null:
+		var target_transform: Transform3D = \
+			_get_current_board_visual_transform(
+				local_player_id,
+				target_slot_id
+			)
+
+		target_place.show_drop_highlight(
+			target_transform,
+			CardPlace3D.HighlightKind.INVALID_COVER
+		)
+		highlighted_drop_place = target_place
+
+	if OS.has_feature("android") or OS.has_feature("ios"):
+		Input.vibrate_handheld(invalid_cover_vibration_ms)
+
+	await get_tree().create_timer(
+		invalid_cover_flash_time
+	).timeout
+
+	_clear_drop_highlight()
+
+	if card_view == null or not is_instance_valid(card_view):
+		return
+
+	var return_tween: Tween = create_tween()
+	return_tween.tween_property(
+		card_view,
+		"global_transform",
+		card_view.home_transform,
+		invalid_cover_return_time
+	).set_trans(
+		Tween.TRANS_BACK
+	).set_ease(
+		Tween.EASE_OUT
+	)
+
+	await return_tween.finished
+	card_view.return_home()
+
+
+func _clear_drop_highlight() -> void:
+	if highlighted_drop_place != null:
+		if is_instance_valid(highlighted_drop_place):
+			highlighted_drop_place.hide_drop_highlight()
+
+	highlighted_drop_place = null
+
+
+func _update_drop_highlight(
+	screen_position: Vector2
+) -> void:
+	_clear_drop_highlight()
+
+	if dragged_card == null:
+		return
+
+	var card: CardInstance = dragged_card.card_instance
+
+	if card == null:
+		return
+
+	var hovered_place: CardPlace3D = _get_place_under_mouse(
+		screen_position
+	)
+
+	if hovered_place == null:
+		return
+
+	if hovered_place.kind != CardPlace3D.Kind.PLAYER_BOARD:
+		return
+
+	if hovered_place.owner_id != local_player_id:
+		return
+
+	var target_slot_id: int = hovered_place.logical_id
+
+	# New cards use front-first resolver. Existing Board cards keep explicit
+	# Move/Cover targeting and are validated by MatchEngine on release.
+	if card.zone == CardZone.Type.HAND:
+		target_slot_id = engine.resolve_play_slot(
+			local_player_id,
+			target_slot_id
+		)
+
+	if not SlotID.is_valid(target_slot_id):
+		return
+
+	var target_place: CardPlace3D = game_layout.get_board_place(
+		local_player_id,
+		target_slot_id
+	)
+
+	if target_place == null:
+		return
+
+	var cover_target: CardInstance = _get_local_cover_target(
+		card,
+		target_slot_id
+	)
+
+	if cover_target != null:
+		var cover_transform: Transform3D = \
+			_get_current_board_visual_transform(
+				local_player_id,
+				target_slot_id
+			)
+
+		var highlight_kind: int = (
+			CardPlace3D.HighlightKind.VALID_COVER
+			if _can_card_cover_local_slot(
+				card,
+				target_slot_id
+			)
+			else CardPlace3D.HighlightKind.INVALID_COVER
+		)
+
+		target_place.show_drop_highlight(
+			cover_transform,
+			highlight_kind
+		)
+		highlighted_drop_place = target_place
+		return
+
+	var preview_transform: Transform3D = \
+		_get_preview_board_transform(
+			card,
+			target_slot_id
+		)
+
+	target_place.show_drop_highlight(
+		preview_transform,
+		CardPlace3D.HighlightKind.NORMAL
+	)
+	highlighted_drop_place = target_place
+
 
 func _get_place_under_mouse(
 	screen_position: Vector2

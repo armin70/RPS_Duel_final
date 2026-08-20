@@ -22,6 +22,15 @@ const DECK_ROW_SWIPE_START_META: StringName = &"deck_swipe_start"
 const DECK_ROW_SWIPE_ACTIVE_META: StringName = &"deck_swipe_active"
 const DECK_ROW_SWIPE_ANIMATING_META: StringName = &"deck_swipe_animating"
 
+const COLLECTION_GESTURE_START_META: StringName = &"collection_gesture_start"
+const COLLECTION_SCROLL_INTENT_META: StringName = &"collection_scroll_intent"
+const DECK_DROP_BLOCK_META: StringName = &"deck_drop_block"
+
+const MOBILE_SCROLL_DEADZONE: int = 4
+const MOBILE_PRIMARY_BUTTON_HEIGHT: float = 68.0
+const MOBILE_SECONDARY_BUTTON_HEIGHT: float = 58.0
+const MOBILE_SMALL_BUTTON_SIZE: float = 54.0
+
 const PRESET_NAMES: Array[String] = [
 	"Starter Deck",
 	"Rock Deck",
@@ -67,6 +76,22 @@ var status_label: Label
 var search_edit: LineEdit
 var rarity_filter: OptionButton
 var deck_name_edit: LineEdit
+
+
+func _is_mobile_ui() -> bool:
+	return OS.has_feature("android") or OS.has_feature("ios")
+
+
+func _configure_mobile_scroll(scroll: ScrollContainer) -> void:
+	if scroll == null:
+		return
+
+	if not _is_mobile_ui():
+		return
+
+	# Start vertical scrolling with a much smaller finger movement.
+	scroll.scroll_deadzone = MOBILE_SCROLL_DEADZONE
+	scroll.follow_focus = false
 
 
 func configure(
@@ -151,10 +176,13 @@ func _build_shell() -> void:
 	margin.set_anchors_and_offsets_preset(
 		Control.PRESET_FULL_RECT
 	)
-	margin.add_theme_constant_override("margin_left", 82)
-	margin.add_theme_constant_override("margin_right", 82)
-	margin.add_theme_constant_override("margin_top", 42)
-	margin.add_theme_constant_override("margin_bottom", 44)
+	var horizontal_margin: int = 24 if _is_mobile_ui() else 82
+	var top_margin: int = 22 if _is_mobile_ui() else 42
+	var bottom_margin: int = 24 if _is_mobile_ui() else 44
+	margin.add_theme_constant_override("margin_left", horizontal_margin)
+	margin.add_theme_constant_override("margin_right", horizontal_margin)
+	margin.add_theme_constant_override("margin_top", top_margin)
+	margin.add_theme_constant_override("margin_bottom", bottom_margin)
 	root_control.add_child(margin)
 
 	var page := VBoxContainer.new()
@@ -182,7 +210,10 @@ func _build_shell() -> void:
 	title_box.add_child(page_subtitle)
 
 	var rules_badge := PanelContainer.new()
-	rules_badge.custom_minimum_size = Vector2(420.0, 74.0)
+	rules_badge.custom_minimum_size = Vector2(
+		320.0 if _is_mobile_ui() else 420.0,
+		74.0
+	)
 	rules_badge.add_theme_stylebox_override(
 		"panel",
 		_make_style(
@@ -228,6 +259,7 @@ func _show_selection_page() -> void:
 		Control.PRESET_FULL_RECT
 	)
 	deck_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_configure_mobile_scroll(deck_scroll)
 	content_host.add_child(deck_scroll)
 
 	var center := CenterContainer.new()
@@ -236,9 +268,15 @@ func _show_selection_page() -> void:
 	deck_scroll.add_child(center)
 
 	var deck_grid := GridContainer.new()
-	deck_grid.columns = 4
-	deck_grid.add_theme_constant_override("h_separation", 24)
-	deck_grid.add_theme_constant_override("v_separation", 24)
+	deck_grid.columns = 2 if _is_mobile_ui() else 4
+	deck_grid.add_theme_constant_override(
+		"h_separation",
+		18 if _is_mobile_ui() else 24
+	)
+	deck_grid.add_theme_constant_override(
+		"v_separation",
+		18 if _is_mobile_ui() else 24
+	)
 	center.add_child(deck_grid)
 
 	for index: int in range(preset_decks.size()):
@@ -458,16 +496,26 @@ func _create_deck_tile(
 	var select_button := Button.new()
 	select_button.name = "SelectButton"
 	select_button.text = action_text
-	select_button.custom_minimum_size = Vector2(0.0, 52.0)
+	select_button.custom_minimum_size = Vector2(
+		0.0,
+		MOBILE_PRIMARY_BUTTON_HEIGHT if _is_mobile_ui() else 52.0
+	)
 	_apply_primary_button_style(select_button)
+	if _is_mobile_ui():
+		select_button.add_theme_font_size_override("font_size", 20)
 	content.add_child(select_button)
 
 	var edit_button := Button.new()
 	edit_button.name = "EditButton"
 	edit_button.text = "EDIT DECK"
 	edit_button.visible = is_custom
-	edit_button.custom_minimum_size = Vector2(0.0, 42.0)
+	edit_button.custom_minimum_size = Vector2(
+		0.0,
+		MOBILE_SECONDARY_BUTTON_HEIGHT if _is_mobile_ui() else 42.0
+	)
 	_apply_secondary_button_style(edit_button)
+	if _is_mobile_ui():
+		edit_button.add_theme_font_size_override("font_size", 18)
 	content.add_child(edit_button)
 
 	return panel
@@ -478,7 +526,9 @@ func _show_builder_page() -> void:
 
 	page_title.text = "BUILD YOUR DECK"
 	page_subtitle.text = (
-		"Drag cards into your deck, or use the existing + and − controls."
+		"Swipe vertically to scroll. Drag a card toward YOUR DECK to add it."
+		if _is_mobile_ui()
+		else "Drag cards into your deck, or use the existing + and − controls."
 	)
 
 	var body := HBoxContainer.new()
@@ -517,14 +567,20 @@ func _show_builder_page() -> void:
 	search_edit = LineEdit.new()
 	search_edit.placeholder_text = "Search cards"
 	search_edit.clear_button_enabled = true
-	search_edit.custom_minimum_size = Vector2(280.0, 46.0)
+	search_edit.custom_minimum_size = Vector2(
+		280.0,
+		56.0 if _is_mobile_ui() else 46.0
+	)
 	search_edit.text_changed.connect(
 		Callable(self, "_on_card_filter_changed")
 	)
 	library_header.add_child(search_edit)
 
 	rarity_filter = OptionButton.new()
-	rarity_filter.custom_minimum_size = Vector2(180.0, 46.0)
+	rarity_filter.custom_minimum_size = Vector2(
+		180.0,
+		56.0 if _is_mobile_ui() else 46.0
+	)
 	rarity_filter.add_item("All Cards")
 	rarity_filter.add_item("Common")
 	rarity_filter.add_item("Rare")
@@ -536,6 +592,7 @@ func _show_builder_page() -> void:
 	card_scroll = ScrollContainer.new()
 	card_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_configure_mobile_scroll(card_scroll)
 	library_content.add_child(card_scroll)
 
 	card_grid = GridContainer.new()
@@ -608,6 +665,7 @@ func _show_builder_page() -> void:
 	var list_scroll := ScrollContainer.new()
 	list_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	list_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_configure_mobile_scroll(list_scroll)
 	deck_content.add_child(list_scroll)
 
 	deck_list = VBoxContainer.new()
@@ -625,11 +683,17 @@ func _show_builder_page() -> void:
 
 	var action_row := HBoxContainer.new()
 	action_row.add_theme_constant_override("separation", 8)
+	action_row.set_meta(DECK_DROP_BLOCK_META, true)
 	deck_content.add_child(action_row)
 
 	var back_button := Button.new()
 	back_button.text = "BACK"
-	back_button.custom_minimum_size = Vector2(118.0, 52.0)
+	back_button.custom_minimum_size = Vector2(
+		132.0 if _is_mobile_ui() else 118.0,
+		MOBILE_PRIMARY_BUTTON_HEIGHT if _is_mobile_ui() else 52.0
+	)
+	back_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	back_button.focus_mode = Control.FOCUS_NONE
 	_apply_secondary_button_style(back_button)
 	back_button.pressed.connect(
 		Callable(self, "_on_builder_back_pressed")
@@ -638,7 +702,10 @@ func _show_builder_page() -> void:
 
 	var clear_button := Button.new()
 	clear_button.text = "CLEAR"
-	clear_button.custom_minimum_size = Vector2(118.0, 52.0)
+	clear_button.custom_minimum_size = Vector2(
+		118.0,
+		MOBILE_PRIMARY_BUTTON_HEIGHT if _is_mobile_ui() else 52.0
+	)
 	_apply_secondary_button_style(clear_button)
 	clear_button.pressed.connect(
 		Callable(self, "_on_clear_deck_pressed")
@@ -648,7 +715,10 @@ func _show_builder_page() -> void:
 	save_button = Button.new()
 	save_button.text = "SAVE DECK"
 	save_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	save_button.custom_minimum_size = Vector2(0.0, 52.0)
+	save_button.custom_minimum_size = Vector2(
+		0.0,
+		MOBILE_PRIMARY_BUTTON_HEIGHT if _is_mobile_ui() else 52.0
+	)
 	_apply_primary_button_style(save_button)
 	save_button.pressed.connect(
 		Callable(self, "_on_save_deck_pressed")
@@ -747,6 +817,8 @@ func _create_collection_card(card: CardDefinition) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(238.0, 350.0)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if _is_mobile_ui():
+		panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_theme_stylebox_override(
 		"panel",
 		_make_style(
@@ -759,6 +831,8 @@ func _create_collection_card(card: CardDefinition) -> PanelContainer:
 
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 5)
+	if _is_mobile_ui():
+		content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(content)
 
 	var image_button := TextureButton.new()
@@ -776,6 +850,17 @@ func _create_collection_card(card: CardDefinition) -> PanelContainer:
 	image_button.pressed.connect(
 		Callable(self, "_on_collection_card_pressed").bind(card)
 	)
+	# Keep drag-to-deck on every platform.
+	# On mobile, vertical gestures are classified as scroll before drag data
+	# is allowed to start, so scrolling the collection remains easy.
+	image_button.mouse_filter = Control.MOUSE_FILTER_PASS
+	if _is_mobile_ui():
+		image_button.gui_input.connect(
+			Callable(self, "_on_collection_card_gui_input").bind(
+				image_button
+			)
+		)
+
 	image_button.set_drag_forwarding(
 		Callable(self, "_get_collection_drag_data").bind(
 			card,
@@ -816,6 +901,7 @@ func _create_collection_card(card: CardDefinition) -> PanelContainer:
 	card_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	card_name.add_theme_font_size_override("font_size", 17)
 	card_name.add_theme_color_override("font_color", COLOR_TEXT)
+	card_name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(card_name)
 
 	var meta := Label.new()
@@ -831,6 +917,7 @@ func _create_collection_card(card: CardDefinition) -> PanelContainer:
 		if card.rarity == CardDefinition.Rarity.RARE
 		else COLOR_COMMON
 	)
+	meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(meta)
 
 	return panel
@@ -899,7 +986,12 @@ func _create_deck_row(card: CardDefinition) -> PanelContainer:
 	var limit: int = settings.get_copy_limit(card)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(0.0, 70.0)
+	panel.custom_minimum_size = Vector2(
+		0.0,
+		82.0 if _is_mobile_ui() else 70.0
+	)
+	if _is_mobile_ui():
+		panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	panel.tooltip_text = "Swipe right to remove one copy."
 	panel.gui_input.connect(
 		Callable(self, "_on_deck_row_gui_input").bind(card, panel)
@@ -947,7 +1039,10 @@ func _create_deck_row(card: CardDefinition) -> PanelContainer:
 
 	var minus_button := Button.new()
 	minus_button.text = "−"
-	minus_button.custom_minimum_size = Vector2(42.0, 42.0)
+	minus_button.custom_minimum_size = Vector2(
+		MOBILE_SMALL_BUTTON_SIZE if _is_mobile_ui() else 42.0,
+		MOBILE_SMALL_BUTTON_SIZE if _is_mobile_ui() else 42.0
+	)
 	_apply_small_button_style(minus_button)
 	minus_button.pressed.connect(
 		Callable(self, "_remove_card_from_deck").bind(card)
@@ -966,7 +1061,10 @@ func _create_deck_row(card: CardDefinition) -> PanelContainer:
 
 	var plus_button := Button.new()
 	plus_button.text = "+"
-	plus_button.custom_minimum_size = Vector2(42.0, 42.0)
+	plus_button.custom_minimum_size = Vector2(
+		MOBILE_SMALL_BUTTON_SIZE if _is_mobile_ui() else 42.0,
+		MOBILE_SMALL_BUTTON_SIZE if _is_mobile_ui() else 42.0
+	)
 	plus_button.disabled = (
 		count >= limit
 		or _get_selected_total() >= settings.deck_size
@@ -981,11 +1079,121 @@ func _create_deck_row(card: CardDefinition) -> PanelContainer:
 	return panel
 
 
+func _on_collection_card_gui_input(
+	event: InputEvent,
+	source: Control
+) -> void:
+	if not _is_mobile_ui():
+		return
+
+	if source == null:
+		return
+
+	if event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+
+		if touch.pressed:
+			source.set_meta(
+				COLLECTION_GESTURE_START_META,
+				touch.position
+			)
+			source.set_meta(
+				COLLECTION_SCROLL_INTENT_META,
+				false
+			)
+		else:
+			source.remove_meta(COLLECTION_GESTURE_START_META)
+			source.remove_meta(COLLECTION_SCROLL_INTENT_META)
+
+		return
+
+	if event is InputEventMouseButton:
+		var mouse_button := event as InputEventMouseButton
+
+		if mouse_button.button_index != MOUSE_BUTTON_LEFT:
+			return
+
+		if mouse_button.pressed:
+			source.set_meta(
+				COLLECTION_GESTURE_START_META,
+				mouse_button.position
+			)
+			source.set_meta(
+				COLLECTION_SCROLL_INTENT_META,
+				false
+			)
+		else:
+			source.remove_meta(COLLECTION_GESTURE_START_META)
+			source.remove_meta(COLLECTION_SCROLL_INTENT_META)
+
+		return
+
+	var current_position: Vector2
+	var has_position: bool = false
+
+	if event is InputEventScreenDrag:
+		current_position = (event as InputEventScreenDrag).position
+		has_position = true
+	elif event is InputEventMouseMotion:
+		current_position = (event as InputEventMouseMotion).position
+		has_position = true
+
+	if not has_position:
+		return
+
+	var start_variant: Variant = source.get_meta(
+		COLLECTION_GESTURE_START_META,
+		current_position
+	)
+	var start_position: Vector2 = start_variant as Vector2
+	var movement: Vector2 = current_position - start_position
+
+	# Clear vertical intent only after a clearly horizontal/rightward gesture.
+	# This means normal up/down swipes remain owned by ScrollContainer.
+	if absf(movement.y) > absf(movement.x) * 1.15:
+		source.set_meta(
+			COLLECTION_SCROLL_INTENT_META,
+			true
+		)
+
+
+func _collection_drag_should_scroll(
+	at_position: Vector2,
+	source: Control
+) -> bool:
+	if not _is_mobile_ui():
+		return false
+
+	if source == null:
+		return false
+
+	if bool(
+		source.get_meta(
+			COLLECTION_SCROLL_INTENT_META,
+			false
+		)
+	):
+		return true
+
+	if not source.has_meta(COLLECTION_GESTURE_START_META):
+		return false
+
+	var start_position: Vector2 = source.get_meta(
+		COLLECTION_GESTURE_START_META
+	) as Vector2
+	var movement: Vector2 = at_position - start_position
+
+	return absf(movement.y) > absf(movement.x) * 1.15
+
+
 func _get_collection_drag_data(
-	_at_position: Vector2,
+	at_position: Vector2,
 	card: CardDefinition,
 	source: Control
 ) -> Variant:
+	if _collection_drag_should_scroll(at_position, source):
+		return null
+
 	if not _can_add_card_to_deck(card):
 		return null
 
@@ -1018,6 +1226,19 @@ func _get_collection_drag_data(
 
 func _configure_deck_drop_target(control: Control) -> void:
 	if control == null:
+		return
+
+	if bool(control.get_meta(DECK_DROP_BLOCK_META, false)):
+		return
+
+	# Interactive controls must keep their own touch/click handling.
+	# Applying drag forwarding recursively to BACK / CLEAR / SAVE / +/- could
+	# interfere with their button input, especially on touch devices.
+	if (
+		control is BaseButton
+		or control is LineEdit
+		or control is ScrollBar
+	):
 		return
 
 	control.set_drag_forwarding(
@@ -1144,12 +1365,26 @@ func _update_deck_row_swipe(
 		pointer_position
 	)
 	var movement: Vector2 = pointer_position - start_position
+	var abs_x: float = absf(movement.x)
+	var abs_y: float = absf(movement.y)
 
-	if movement.x <= 0.0 or movement.x < absf(movement.y):
+	# Mobile priority: if the gesture is mainly vertical, immediately give it
+	# to the parent ScrollContainer instead of keeping the row in swipe mode.
+	if _is_mobile_ui() and abs_y > abs_x * 0.85:
+		panel.set_meta(DECK_ROW_SWIPE_ACTIVE_META, false)
 		panel.position.x = 0.0
 		return
 
-	panel.position.x = minf(movement.x, DECK_ROW_SWIPE_MAX_OFFSET)
+	# Do not visually drag a deck row until the user has clearly intended
+	# a horizontal right-swipe. This prevents tiny finger wobble while scrolling.
+	if movement.x <= 12.0 or abs_x <= abs_y * 1.15:
+		panel.position.x = 0.0
+		return
+
+	panel.position.x = minf(
+		movement.x,
+		DECK_ROW_SWIPE_MAX_OFFSET
+	)
 
 
 func _finish_deck_row_swipe(
@@ -1761,7 +1996,10 @@ func _apply_secondary_button_style(button: Button) -> void:
 
 
 func _apply_small_button_style(button: Button) -> void:
-	button.add_theme_font_size_override("font_size", 20)
+	button.add_theme_font_size_override(
+		"font_size",
+		24 if _is_mobile_ui() else 20
+	)
 	button.add_theme_color_override("font_color", COLOR_TEXT)
 	button.add_theme_stylebox_override(
 		"normal",

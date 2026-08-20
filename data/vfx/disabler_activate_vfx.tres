@@ -1,10 +1,9 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://dhyc0h56m8m85"]
 
-[ext_resource type="Script" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
-[ext_resource type="PackedScene" path="res://VFX/disabler/disabler_card.tscn" id="2_scene"]
+[ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
+[ext_resource type="PackedScene" uid="uid://biotdtmbp57w4" path="res://VFX/disabler/disabler_card.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_vfx")
 scene = ExtResource("2_scene")
 animation_name = &"activate"
-cleanup_delay = 0.15

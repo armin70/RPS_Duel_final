@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_et4f6"]
 [ext_resource type="Texture2D" uid="uid://rfeiihj8rdt3" path="res://art/cards/22.png" id="2_7io8t"]
 [ext_resource type="Texture2D" uid="uid://dl2kbo50foamx" path="res://art/card_info/27.png" id="4_fj2ib"]
-[ext_resource type="Resource" path="res://data/vfx/collector_paper_vfx.tres" id="99_vfx1"]
+[ext_resource type="Resource" uid="uid://cgkdvvg7ypukj" path="res://data/vfx/collector_paper_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_ucy28"]
 script = ExtResource("1_7io8t")

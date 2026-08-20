@@ -4,7 +4,7 @@
 [ext_resource type="Script" uid="uid://bs2blrv41ci6b" path="res://core/cards/behaviors/killer_behavior.gd" id="1_pd2ul"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_s6sm3"]
 [ext_resource type="Texture2D" uid="uid://bifomy42ofuno" path="res://art/card_info/32.png" id="3_bs8op"]
-[ext_resource type="Resource" path="res://data/vfx/killer_rock_placed_vfx.tres" id="99_vfx1"]
+[ext_resource type="Resource" uid="uid://m7dfkngh3pj4" path="res://data/vfx/killer_rock_placed_vfx.tres" id="99_vfx1"]
 
 [sub_resource type="Resource" id="Resource_aihvp"]
 script = ExtResource("1_pd2ul")

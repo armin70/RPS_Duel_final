@@ -6,7 +6,7 @@
 
 [node name="MusicManager" type="Node" unique_id=1656370774]
 script = ExtResource("1_1826a")
-menu_music = ExtResource("3_game")
-game_music = ExtResource("2_menu")
+menu_music = ExtResource("2_menu")
+game_music = ExtResource("3_game")
 
 [node name="MusicPlayer" type="AudioStreamPlayer" parent="." unique_id=1400860265]

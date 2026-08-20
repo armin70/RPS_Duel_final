@@ -223,3 +223,74 @@ func get_pile_entity(
 		pile_type,
 		null
 	) as CardPile3D
+
+
+func get_board_anchor_transform(
+	player_id: int,
+	slot_id: int
+) -> Transform3D:
+	var place: CardPlace3D = get_board_place(
+		player_id,
+		slot_id
+	)
+
+	if place == null or place.card_anchor == null:
+		return Transform3D.IDENTITY
+
+	return place.card_anchor.global_transform
+
+
+func get_middle_row_center_transform(
+	player_id: int,
+	row: int
+) -> Transform3D:
+	var first_slot_id: int
+	var second_slot_id: int
+
+	if row == SlotID.Row.FRONT:
+		first_slot_id = SlotID.Type.FRONT_MIDDLE_0
+		second_slot_id = SlotID.Type.FRONT_MIDDLE_1
+	else:
+		first_slot_id = SlotID.Type.BACK_MIDDLE_0
+		second_slot_id = SlotID.Type.BACK_MIDDLE_1
+
+	var first_transform: Transform3D = get_board_anchor_transform(
+		player_id,
+		first_slot_id
+	)
+	var second_transform: Transform3D = get_board_anchor_transform(
+		player_id,
+		second_slot_id
+	)
+
+	var centered: Transform3D = first_transform
+	centered.origin = (
+		first_transform.origin
+		+ second_transform.origin
+	) * 0.5
+
+	return centered
+
+
+func get_board_visual_transform(
+	player_id: int,
+	slot_id: int,
+	middle_row_card_count: int = 2
+) -> Transform3D:
+	if not SlotID.is_valid(slot_id):
+		return Transform3D.IDENTITY
+
+	if (
+		SlotID.get_lane(slot_id) == SlotID.Lane.MIDDLE
+		and middle_row_card_count == 1
+	):
+		return get_middle_row_center_transform(
+			player_id,
+			SlotID.get_row(slot_id)
+		)
+
+	return get_board_anchor_transform(
+		player_id,
+		slot_id
+	)
+

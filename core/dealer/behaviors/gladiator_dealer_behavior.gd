@@ -8,3 +8,9 @@ func discards_lane_losers_after_combat() -> bool:
 
 func requires_matching_middle_pair() -> bool:
 	return true
+
+
+# Used only by the Fair Bot's strategic scoring.
+func get_ai_pvp_loss_penalty() -> float:
+	return 18.0
+

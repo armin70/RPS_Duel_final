@@ -18,3 +18,9 @@ var from_slot_id: int = -1
 
 # Cards that left the board exactly because of this action.
 var removed_cards: Array[CardInstance] = []
+
+# Public visual board state immediately after this action.
+# This is captured when the action happens so reveal can replay one action
+# at a time without exposing later hidden Bot moves.
+# Key: CardInstance.instance_id, Value: SlotID.Type
+var board_slots_after: Dictionary = {}
