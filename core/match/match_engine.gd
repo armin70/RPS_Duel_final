@@ -237,6 +237,88 @@ func _normalize_all_player_front_rows() -> void:
 	_normalize_player_front_rows(state.player_two)
 
 
+func can_cover_card(
+	player_id: int,
+	card: CardInstance,
+	target_slot_id: int
+) -> bool:
+	if state == null:
+		return false
+
+	if state.phase != MatchPhase.Type.MAIN:
+		return false
+
+	if not SlotID.is_valid(target_slot_id):
+		return false
+
+	var player: PlayerState = state.get_player(
+		player_id
+	)
+
+	if player == null or card == null:
+		return false
+
+	if player.is_ready:
+		return false
+
+	if card.definition == null:
+		return false
+
+	if card.owner_id != player_id:
+		return false
+
+	var target_card: CardInstance = player.board.get_card(
+		target_slot_id
+	)
+
+	if target_card == null:
+		return false
+
+	if target_card == card:
+		return false
+
+	if target_card.definition == null:
+		return false
+
+	var turns_since_played: int = (
+		state.turn_number
+		- target_card.turn_played
+	)
+
+	if turns_since_played < 1:
+		return false
+
+	if not CardGesture.can_cover(
+		card.definition.gesture,
+		target_card.definition.gesture
+	):
+		return false
+
+	if card.zone == CardZone.Type.HAND:
+		return _can_play_in_row_order(
+			player,
+			target_slot_id
+		)
+
+	if card.zone == CardZone.Type.BOARD:
+		if not SlotID.is_valid(card.current_slot):
+			return false
+
+		if (
+			player.board_move_used_turn
+			== state.turn_number
+		):
+			return false
+
+		return _can_move_in_row_order(
+			player,
+			card.current_slot,
+			target_slot_id
+		)
+
+	return false
+
+
 func play_card(
 	player_id: int,
 	card: CardInstance,

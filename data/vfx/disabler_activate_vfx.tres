@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://dhyc0h56m8m85"]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://p2cum56sugt5"]
 
 [ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
 [ext_resource type="PackedScene" uid="uid://biotdtmbp57w4" path="res://VFX/disabler/disabler_card.tscn" id="2_scene"]

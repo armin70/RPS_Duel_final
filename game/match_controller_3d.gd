@@ -113,11 +113,9 @@ var low_mana_reject_return_time: float = 0.14
 
 @export_category("Cover Feedback")
 @export_range(20, 120, 5)
-var invalid_cover_vibration_ms: int = 35
-@export_range(0.05, 0.30, 0.01)
-var invalid_cover_flash_time: float = 0.14
-@export_range(0.05, 0.35, 0.01)
-var invalid_cover_return_time: float = 0.16
+var invalid_cover_vibration_ms: int = 40
+@export_range(0.10, 0.50, 0.01)
+var invalid_cover_flash_time: float = 0.22
 
 @export_category("Board Placement")
 @export_range(0.05, 0.5, 0.01)
@@ -2118,30 +2116,12 @@ func _finish_card_drag(
 		tutorial_controller.notify_wrong_action()
 		return
 
-	var target_slot_id: int = place.logical_id
-	if card.zone == CardZone.Type.HAND:
-		target_slot_id = engine.resolve_play_slot(
-			local_player_id,
-			target_slot_id
-		)
-
-	var cover_target: CardInstance = _get_local_cover_target(
+	if _reject_invalid_cover(
+		card_view,
 		card,
-		target_slot_id
-	)
-
-	if (
-		cover_target != null
-		and not _can_card_cover_local_slot(
-			card,
-			target_slot_id
-		)
+		place
 	):
-		await _play_invalid_cover_feedback(
-			card_view,
-			place,
-			target_slot_id
-		)
+		highlighted_drop_place = null
 		return
 
 	_clear_drop_highlight()
@@ -2152,7 +2132,7 @@ func _finish_card_drag(
 		var was_played: bool = engine.play_card(
 			local_player_id,
 			card,
-			target_slot_id
+			place.logical_id
 		)
 
 		if not was_played:
@@ -2203,7 +2183,7 @@ func _finish_card_drag(
 		await _refresh_hand_positions()
 
 		if tutorial_controller != null and tutorial_controller.is_active():
-			var actual_slot_id: int = target_slot_id
+			var actual_slot_id: int = place.logical_id
 			if SlotID.is_valid(card.current_slot):
 				actual_slot_id = card.current_slot
 
@@ -2216,7 +2196,7 @@ func _finish_card_drag(
 
 	if original_zone == CardZone.Type.BOARD:
 		var from_slot_id: int = card.current_slot
-		var to_slot_id: int = target_slot_id
+		var to_slot_id: int = place.logical_id
 
 		var was_moved: bool = engine.move_board_card(
 			local_player_id,
@@ -2226,6 +2206,7 @@ func _finish_card_drag(
 
 		if not was_moved:
 			card_view.return_home()
+			_vibrate_invalid_switch()
 			return
 
 		_remove_pile_card_views(
@@ -2492,191 +2473,98 @@ func _refresh_board_card_positions(
 		await tween.finished
 
 
-func _get_feedback_required_front_slot(
+func _get_local_board_card(
 	slot_id: int
-) -> int:
-	match slot_id:
-		SlotID.Type.BACK_LEFT:
-			return SlotID.Type.FRONT_LEFT
-
-		SlotID.Type.BACK_MIDDLE_0:
-			return SlotID.Type.FRONT_MIDDLE_0
-
-		SlotID.Type.BACK_MIDDLE_1:
-			return SlotID.Type.FRONT_MIDDLE_1
-
-		SlotID.Type.BACK_RIGHT:
-			return SlotID.Type.FRONT_RIGHT
-
-	return -1
-
-
-func _can_card_cover_local_slot(
-	card: CardInstance,
-	target_slot_id: int
-) -> bool:
-	if state == null or card == null:
-		return false
-
-	if card.definition == null:
-		return false
-
-	if not SlotID.is_valid(target_slot_id):
-		return false
+) -> CardInstance:
+	if state == null:
+		return null
 
 	var player: PlayerState = state.get_player(
 		local_player_id
 	)
+
 	if player == null:
-		return false
+		return null
 
-	if player.is_ready:
-		return false
+	return player.board.get_card(slot_id)
 
-	var target_card: CardInstance = player.board.get_card(
+
+func _get_cover_highlight_kind(
+	card: CardInstance,
+	target_slot_id: int
+) -> CardPlace3D.HighlightKind:
+	var target_card: CardInstance = _get_local_board_card(
 		target_slot_id
 	)
+
+	if target_card == null:
+		return CardPlace3D.HighlightKind.NORMAL
+
+	if target_card == card:
+		return CardPlace3D.HighlightKind.NORMAL
+
+	if engine.can_cover_card(
+		local_player_id,
+		card,
+		target_slot_id
+	):
+		return CardPlace3D.HighlightKind.VALID_COVER
+
+	return CardPlace3D.HighlightKind.INVALID_COVER
+
+
+func _reject_invalid_cover(
+	card_view: Card3D,
+	card: CardInstance,
+	place: CardPlace3D
+) -> bool:
+	if card_view == null or card == null or place == null:
+		return false
+
+	var target_card: CardInstance = _get_local_board_card(
+		place.logical_id
+	)
+
 	if target_card == null:
 		return false
 
 	if target_card == card:
 		return false
 
-	if target_card.definition == null:
-		return false
-
-	var turns_since_played: int = (
-		state.turn_number
-		- target_card.turn_played
-	)
-	if turns_since_played < 1:
-		return false
-
-	if not CardGesture.can_cover(
-		card.definition.gesture,
-		target_card.definition.gesture
+	if engine.can_cover_card(
+		local_player_id,
+		card,
+		place.logical_id
 	):
 		return false
 
-	var required_front_slot: int = \
-		_get_feedback_required_front_slot(
-			target_slot_id
+	var preview_transform: Transform3D = \
+		_get_preview_board_transform(
+			card,
+			place.logical_id
 		)
 
-	if card.zone == CardZone.Type.HAND:
-		if not player.hand.has(card):
-			return false
-
-		if player.current_mana < card.definition.mana_cost:
-			return false
-
-		if (
-			required_front_slot != -1
-			and player.board.get_card(required_front_slot) == null
-		):
-			return false
-
-		return true
-
-	if card.zone == CardZone.Type.BOARD:
-		var from_slot_id: int = card.current_slot
-		if not SlotID.is_valid(from_slot_id):
-			return false
-
-		if from_slot_id == target_slot_id:
-			return false
-
-		if player.board.get_card(from_slot_id) != card:
-			return false
-
-		if player.board_move_used_turn == state.turn_number:
-			return false
-
-		if player.current_mana < MatchEngine.BOARD_MOVE_MANA_COST:
-			return false
-
-		if required_front_slot != -1:
-			# Same rule as MatchEngine._can_move_in_row_order().
-			if from_slot_id == required_front_slot:
-				return false
-
-			if player.board.get_card(required_front_slot) == null:
-				return false
-
-		return true
-
-	return false
-
-
-func _get_local_cover_target(
-	card: CardInstance,
-	target_slot_id: int
-) -> CardInstance:
-	if state == null or card == null:
-		return null
-
-	var player: PlayerState = state.get_player(
-		local_player_id
-	)
-	if player == null:
-		return null
-
-	var target_card: CardInstance = player.board.get_card(
-		target_slot_id
-	)
-
-	if target_card == card:
-		return null
-
-	return target_card
-
-
-func _play_invalid_cover_feedback(
-	card_view: Card3D,
-	target_place: CardPlace3D,
-	target_slot_id: int
-) -> void:
-	_clear_drop_highlight()
-
-	if target_place != null:
-		var target_transform: Transform3D = \
-			_get_current_board_visual_transform(
-				local_player_id,
-				target_slot_id
-			)
-
-		target_place.show_drop_highlight(
-			target_transform,
-			CardPlace3D.HighlightKind.INVALID_COVER
-		)
-		highlighted_drop_place = target_place
-
-	if OS.has_feature("android") or OS.has_feature("ios"):
-		Input.vibrate_handheld(invalid_cover_vibration_ms)
-
-	await get_tree().create_timer(
+	place.flash_invalid_drop(
+		preview_transform,
 		invalid_cover_flash_time
-	).timeout
-
-	_clear_drop_highlight()
-
-	if card_view == null or not is_instance_valid(card_view):
-		return
-
-	var return_tween: Tween = create_tween()
-	return_tween.tween_property(
-		card_view,
-		"global_transform",
-		card_view.home_transform,
-		invalid_cover_return_time
-	).set_trans(
-		Tween.TRANS_BACK
-	).set_ease(
-		Tween.EASE_OUT
 	)
 
-	await return_tween.finished
 	card_view.return_home()
+
+	_vibrate_invalid_switch()
+
+	if tutorial_controller != null and tutorial_controller.is_active():
+		tutorial_controller.notify_wrong_action()
+
+	return true
+
+
+func _vibrate_invalid_switch() -> void:
+	# Safe on unsupported platforms (Godot simply ignores it there).
+	# Android still needs the VIBRATE export permission enabled.
+	Input.vibrate_handheld(
+		invalid_cover_vibration_ms
+	)
 
 
 func _clear_drop_highlight() -> void:
@@ -2734,43 +2622,20 @@ func _update_drop_highlight(
 	if target_place == null:
 		return
 
-	var cover_target: CardInstance = _get_local_cover_target(
-		card,
-		target_slot_id
-	)
-
-	if cover_target != null:
-		var cover_transform: Transform3D = \
-			_get_current_board_visual_transform(
-				local_player_id,
-				target_slot_id
-			)
-
-		var highlight_kind: int = (
-			CardPlace3D.HighlightKind.VALID_COVER
-			if _can_card_cover_local_slot(
-				card,
-				target_slot_id
-			)
-			else CardPlace3D.HighlightKind.INVALID_COVER
-		)
-
-		target_place.show_drop_highlight(
-			cover_transform,
-			highlight_kind
-		)
-		highlighted_drop_place = target_place
-		return
-
 	var preview_transform: Transform3D = \
 		_get_preview_board_transform(
 			card,
 			target_slot_id
 		)
 
+	var highlight_kind: CardPlace3D.HighlightKind = 		_get_cover_highlight_kind(
+			card,
+			target_slot_id
+		)
+
 	target_place.show_drop_highlight(
 		preview_transform,
-		CardPlace3D.HighlightKind.NORMAL
+		highlight_kind
 	)
 	highlighted_drop_place = target_place
 

@@ -15,6 +15,8 @@ const SAVE_NAME_KEY: String = "name"
 const COLLECTION_CARD_MIN_WIDTH: float = 238.0
 const COLLECTION_CARD_GAP: float = 12.0
 const COLLECTION_SCROLLBAR_ALLOWANCE: float = 30.0
+const DECK_TILE_MIN_WIDTH: float = 360.0
+const DECK_TILE_MAX_COLUMNS: int = 4
 const CARD_DRAG_DATA_TYPE: String = "deck_builder_card"
 const DECK_ROW_SWIPE_THRESHOLD: float = 96.0
 const DECK_ROW_SWIPE_MAX_OFFSET: float = 180.0
@@ -268,7 +270,7 @@ func _show_selection_page() -> void:
 	deck_scroll.add_child(center)
 
 	var deck_grid := GridContainer.new()
-	deck_grid.columns = 2 if _is_mobile_ui() else 4
+	deck_grid.columns = DECK_TILE_MAX_COLUMNS
 	deck_grid.add_theme_constant_override(
 		"h_separation",
 		18 if _is_mobile_ui() else 24
@@ -286,6 +288,46 @@ func _show_selection_page() -> void:
 		_add_saved_custom_deck_tile(deck_grid, index)
 
 	_add_new_custom_deck_tile(deck_grid)
+
+	deck_scroll.resized.connect(
+		Callable(self, "_update_deck_selection_columns").bind(
+			deck_grid,
+			deck_scroll
+		)
+	)
+	Callable(self, "_update_deck_selection_columns").call_deferred(
+		deck_grid,
+		deck_scroll
+	)
+
+
+func _update_deck_selection_columns(
+	deck_grid: GridContainer,
+	deck_scroll: ScrollContainer
+) -> void:
+	if not is_instance_valid(deck_grid):
+		return
+	if not is_instance_valid(deck_scroll):
+		return
+
+	var gap: float = 18.0 if _is_mobile_ui() else 24.0
+	var tile_count: int = deck_grid.get_child_count()
+	var maximum_columns: int = mini(
+		DECK_TILE_MAX_COLUMNS,
+		maxi(1, tile_count)
+	)
+	var available_width: float = maxf(
+		DECK_TILE_MIN_WIDTH,
+		deck_scroll.size.x
+	)
+	var column_width: float = DECK_TILE_MIN_WIDTH + gap
+	var column_count: int = clampi(
+		floori((available_width + gap) / column_width),
+		1,
+		maximum_columns
+	)
+
+	deck_grid.columns = column_count
 
 
 func _add_preset_tile(parent: Container, index: int) -> void:

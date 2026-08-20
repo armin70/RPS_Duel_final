@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://dhbyqt5u6pdpq"]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://cgf7q6gs002s6"]
 
 [ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
 [ext_resource type="PackedScene" uid="uid://coqtr13ffe5ki" path="res://VFX/killer/killer_paper.tscn" id="2_scene"]

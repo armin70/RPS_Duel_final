@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://ccjf7vsmvpe3e"]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://buwenndgb25ri"]
 
 [ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
 [ext_resource type="PackedScene" uid="uid://cdxkc5ss8cdl4" path="res://VFX/collector/collector_scissor.tscn" id="2_scene"]

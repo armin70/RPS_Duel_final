@@ -334,9 +334,9 @@ func show_low_mana_feedback() -> void:
 			0.085
 		)
 
-	# One subtle haptic tick on phones/tablets.
-	if OS.has_feature("android") or OS.has_feature("ios"):
-		Input.vibrate_handheld(low_mana_vibration_ms)
+	# Safe on unsupported platforms (Godot simply ignores it there).
+	# Android still needs the VIBRATE export permission enabled.
+	Input.vibrate_handheld(low_mana_vibration_ms)
 
 
 func _build_dealer_notice() -> void:

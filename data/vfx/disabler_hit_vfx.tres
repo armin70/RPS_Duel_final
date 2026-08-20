@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://scg2miwuepdg"]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://dia8v7ou1ir3d"]
 
 [ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
 [ext_resource type="PackedScene" uid="uid://lbfxclac0n3b" path="res://VFX/disabler/disabling_lightning.tscn" id="2_scene"]

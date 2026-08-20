@@ -4,8 +4,8 @@
 [ext_resource type="Script" uid="uid://c7x3gmsi5cxow" path="res://core/cards/behaviors/disable_gesture_behavior.gd" id="1_dw1ed"]
 [ext_resource type="Texture2D" uid="uid://bhuo5ffwnbcfh" path="res://art/cards/64.png" id="2_dw1ed"]
 [ext_resource type="Texture2D" uid="uid://bg76xrrloeqar" path="res://art/card_info/30.png" id="3_hdnfu"]
-[ext_resource type="Resource" uid="uid://dhyc0h56m8m85" path="res://data/vfx/disabler_activate_vfx.tres" id="99_vfx1"]
-[ext_resource type="Resource" uid="uid://scg2miwuepdg" path="res://data/vfx/disabler_hit_vfx.tres" id="99_vfx2"]
+[ext_resource type="Resource" uid="uid://p2cum56sugt5" path="res://data/vfx/disabler_activate_vfx.tres" id="99_vfx1"]
+[ext_resource type="Resource" uid="uid://dia8v7ou1ir3d" path="res://data/vfx/disabler_hit_vfx.tres" id="99_vfx2"]
 
 [sub_resource type="Resource" id="Resource_x7kle"]
 script = ExtResource("1_dw1ed")

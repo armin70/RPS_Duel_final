@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cn145dmt3xx7d"]
 
-[ext_resource type="Texture2D" uid="uid://b7hcw7du38ov2" path="res://art/cards/60.png" id="1_3ylj2"]
+[ext_resource type="Texture2D" uid="uid://bjwyjcs81q5yn" path="res://art/cards/60.png" id="1_3ylj2"]
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="2_w3hij"]
 
 [resource]

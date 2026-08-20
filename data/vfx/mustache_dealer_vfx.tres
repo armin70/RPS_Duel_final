@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://bpmnnlin13l5m"]
+[gd_resource type="Resource" script_class="CardVFXDefinition" format=3 uid="uid://36db8uetptw0"]
 
 [ext_resource type="Script" uid="uid://bkksl8ddhyoyx" path="res://core/vfx/card_vfx_definition.gd" id="1_vfx"]
 [ext_resource type="PackedScene" uid="uid://8wv80fi85cj2" path="res://VFX/sibil/sibil_fight.tscn" id="2_scene"]
