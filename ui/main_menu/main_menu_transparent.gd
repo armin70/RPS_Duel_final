@@ -5,6 +5,7 @@ extends CanvasLayer
 signal single_player_selected
 signal two_player_selected
 signal hardcore_selected
+signal rush_mode_selected
 
 
 enum MenuPhase {
@@ -40,11 +41,11 @@ enum MenuPhase {
 var maximum_sync_drift: float = 0.06
 
 @onready var help_button: Button = \
-	$MenuRoot/HelpButton
+	$MenuRoot/ModeButtons/HelpButton
 @onready var start_button: Button = $MenuRoot/StartButton
 
 @onready var help_video_player: VideoStreamPlayer = \
-	$MenuRoot/HelpVideoPlayer
+	$MenuRoot/ModeButtons/HelpVideoPlayer
 @onready var menu_root: Control = $MenuRoot
 @onready var color_player: VideoStreamPlayer = $MenuRoot/ColorPlayer
 @onready var alpha_player: VideoStreamPlayer = $MenuRoot/AlphaPlayer
@@ -57,6 +58,8 @@ var maximum_sync_drift: float = 0.06
 
 @onready var single_player_button: Button = \
 	$MenuRoot/ModeButtons/SinglePlayerButton
+@onready var rush_button: Button = \
+	$MenuRoot/ModeButtons/RushModeButton
 @onready var tutorial_button: Button = $MenuRoot/ModeButtons/HelpButton
 
 @onready var two_player_button: Button = \
@@ -69,6 +72,7 @@ var maximum_sync_drift: float = 0.06
 @onready var understood_button: TextureButton = $AlphaNotice/UnderstoodButton
 var phase: int = MenuPhase.IDLE
 var tutorial_mode_selected: bool = false
+var rush_selected: bool = false
 var transition_is_running: bool = false
 var game_transition_running: bool = false
 
@@ -102,12 +106,12 @@ func _ready() -> void:
 		get_tree().paused = true
 
 	composite_material = composite.material as ShaderMaterial
-
 	if composite_material == null:
 		push_error(
 			"Composite needs the transparent-video ShaderMaterial."
 		)
 		return
+
 
 	start_button.show()
 	mode_buttons.hide()
@@ -122,6 +126,10 @@ func _ready() -> void:
 
 	single_player_button.pressed.connect(
 		_on_single_player_button_pressed
+	)
+
+	rush_button.pressed.connect(
+		_on_rush_button_pressed
 	)
 
 	two_player_button.pressed.connect(
@@ -194,20 +202,33 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	if not color_player.is_playing():
+	_sync_video_pair(color_player, alpha_player)
+
+
+func _sync_video_pair(
+	primary: VideoStreamPlayer,
+	secondary: VideoStreamPlayer
+) -> void:
+	if not is_instance_valid(primary):
 		return
 
-	if not alpha_player.is_playing():
+	if not is_instance_valid(secondary):
+		return
+
+	if not primary.is_playing():
+		return
+
+	if not secondary.is_playing():
 		return
 
 	var drift: float = absf(
-		color_player.stream_position
-		- alpha_player.stream_position
+		primary.stream_position
+		- secondary.stream_position
 	)
 
 	if drift > maximum_sync_drift:
-		alpha_player.stream_position = \
-			color_player.stream_position
+		secondary.stream_position = \
+			primary.stream_position
 
 
 func _play_video_pair(
@@ -255,6 +276,7 @@ func _restart_idle_video() -> void:
 		idle_alpha_video,
 		MenuPhase.IDLE
 	)
+
 
 
 func _on_color_video_finished() -> void:
@@ -306,6 +328,7 @@ func _on_single_player_button_pressed() -> void:
 		"gameplay/hardcore_bot",
 		false
 	)
+	rush_selected = false
 
 	# فقط اولین بار که بازیکن وارد Single Player می‌شود،
 	# Tutorial به صورت خودکار اجرا می‌شود.
@@ -316,6 +339,7 @@ func _on_single_player_button_pressed() -> void:
 
 	if controller != null:
 		controller.tutorial_enabled = tutorial_mode_selected
+		controller.rush_mode_enabled = false
 
 	single_player_selected.emit()
 
@@ -349,6 +373,7 @@ func _on_tutorial_button_pressed() -> void:
 		return
 
 	tutorial_mode_selected = true
+	rush_selected = false
 
 	ProjectSettings.set_setting(
 		"gameplay/hardcore_bot",
@@ -360,6 +385,7 @@ func _on_tutorial_button_pressed() -> void:
 
 	if controller != null:
 		controller.tutorial_enabled = true
+		controller.rush_mode_enabled = false
 
 	single_player_selected.emit()
 
@@ -368,12 +394,14 @@ func _on_tutorial_button_pressed() -> void:
 
 func _on_hardcore_button_pressed() -> void:
 	tutorial_mode_selected = false
+	rush_selected = false
 
 	var controller: MatchController3D = \
 		_get_match_controller()
 
 	if controller != null:
 		controller.tutorial_enabled = false
+		controller.rush_mode_enabled = false
 	if transition_is_running:
 		return
 
@@ -387,6 +415,30 @@ func _on_hardcore_button_pressed() -> void:
 	)
 
 	hardcore_selected.emit()
+	single_player_selected.emit()
+
+	await _start_game_sequence()
+
+
+func _on_rush_button_pressed() -> void:
+	if transition_is_running or game_transition_running:
+		return
+
+	tutorial_mode_selected = false
+	rush_selected = true
+
+	ProjectSettings.set_setting(
+		"gameplay/hardcore_bot",
+		false
+	)
+
+	var controller: MatchController3D = _get_match_controller()
+
+	if controller != null:
+		controller.tutorial_enabled = false
+		controller.rush_mode_enabled = true
+
+	rush_mode_selected.emit()
 	single_player_selected.emit()
 
 	await _start_game_sequence()
@@ -467,6 +519,8 @@ func _start_game_sequence() -> void:
 
 	if tutorial_mode_selected:
 		await controller.begin_tutorial_match()
+	elif rush_selected:
+		await controller.begin_rush_match()
 	else:
 		controller.begin_deck_selection()
 

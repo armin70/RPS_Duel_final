@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="MatchRules" format=3 uid="uid://mbuby14lqr13"]
+
+[ext_resource type="Script" uid="uid://b7wnyd3ah2kl3" path="res://core/rules/match_rules.gd" id="1_rules"]
+
+[resource]
+script = ExtResource("1_rules")
+mana_gain_per_turn = 2
+maximum_mana = 8
+winning_score_difference = 30

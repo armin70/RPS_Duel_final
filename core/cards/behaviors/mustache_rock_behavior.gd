@@ -44,7 +44,7 @@ func get_dealer_attack_type(
 			continue
 
 		if (
-			friend_card.definition.gesture
+			friend_card.get_gesture()
 			!= CardGesture.Type.ROCK
 		):
 			continue

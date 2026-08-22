@@ -71,7 +71,7 @@ func on_start_combat(
 			continue
 
 		if (
-			target_card.definition.gesture
+			target_card.get_gesture()
 			!= collected_gesture
 		):
 			continue

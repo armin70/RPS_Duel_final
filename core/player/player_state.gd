@@ -20,3 +20,13 @@ var board_move_used_turn: int = -1
 func _init(new_player_id: int) -> void:
 	player_id = new_player_id
 	board = BoardState.new()
+
+
+func get_remaining_card_count() -> int:
+	return (
+		draw_pile.size()
+		+ hand.size()
+		+ discard_pile.size()
+		+ reserve_pile.size()
+		+ board.get_occupied_cards().size()
+	)

@@ -30,6 +30,7 @@ var is_face_up: bool = true
 
 
 @onready var card_art: MeshInstance3D = $CardArt
+@onready var card_name: Label3D = $CardName
 @onready var disabled_label: Label3D = $DisabledLabel
 @onready var disabled_card: MeshInstance3D = $Disabled_card
 
@@ -59,6 +60,7 @@ func _ready() -> void:
 	input_ray_pickable = true
 
 	_create_card_material()
+	_refresh_gesture_override_label()
 
 
 func _create_card_material() -> void:
@@ -91,6 +93,7 @@ func setup(
 
 	_create_card_material()
 	set_face_up(start_face_up)
+	_refresh_gesture_override_label()
 
 
 func set_face_up(value: bool) -> void:
@@ -120,6 +123,40 @@ func set_face_up(value: bool) -> void:
 			)
 	else:
 		card_material.albedo_texture = back_texture
+
+	_refresh_gesture_override_label()
+
+
+func refresh_gesture_override_label() -> void:
+	_refresh_gesture_override_label()
+
+
+func _refresh_gesture_override_label() -> void:
+	if card_name == null:
+		return
+
+	if (
+		card_instance == null
+		or not is_face_up
+		or not card_instance.has_gesture_override()
+	):
+		card_name.visible = false
+		return
+
+	var gesture: CardGesture.Type = card_instance.get_gesture()
+	if gesture not in [
+		CardGesture.Type.ROCK,
+		CardGesture.Type.PAPER,
+		CardGesture.Type.SCISSORS
+	]:
+		card_name.visible = false
+		return
+
+	card_name.text = CardGesture.Type.keys()[gesture]
+	card_name.font_size = 11
+	card_name.outline_size = 4
+	card_name.modulate = Color.WHITE
+	card_name.visible = true
 
 
 func move_home(
@@ -331,3 +368,64 @@ func _play_shield_badge_pulse() -> void:
 		shield_badge_base_scale,
 		0.25
 	)
+
+
+# Rush unused-mana penalty presentation. The card rises out of the current
+# hand and fades before MatchController rebuilds the next-turn hand.
+func play_rush_penalty_remove(
+	raise_height: float = 0.55,
+	duration: float = 0.55
+) -> float:
+	is_draggable = false
+	input_ray_pickable = false
+	_cancel_inspect_hold()
+
+	_create_card_material()
+
+	if card_material == null:
+		return 0.0
+
+	# Hand cards do not need status overlays while they disappear.
+	disabled_card.visible = false
+	shield_badge.visible = false
+
+	card_material.transparency = \
+		BaseMaterial3D.TRANSPARENCY_ALPHA
+
+	var start_color: Color = card_material.albedo_color
+	start_color.a = 1.0
+	card_material.albedo_color = start_color
+
+	var end_color: Color = start_color
+	end_color.a = 0.0
+
+	var target_position: Vector3 = (
+		global_position
+		+ Vector3.UP * raise_height
+	)
+
+	var tween: Tween = create_tween()
+	tween.set_parallel(true)
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_OUT)
+
+	tween.tween_property(
+		self,
+		"global_position",
+		target_position,
+		duration
+	)
+	tween.tween_property(
+		card_material,
+		"albedo_color",
+		end_color,
+		duration
+	)
+	tween.tween_property(
+		self,
+		"scale",
+		scale * 0.86,
+		duration
+	)
+
+	return duration

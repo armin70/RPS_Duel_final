@@ -275,22 +275,14 @@ func get_middle_row_center_transform(
 func get_board_visual_transform(
 	player_id: int,
 	slot_id: int,
-	middle_row_card_count: int = 2
+	_middle_row_card_count: int = 2
 ) -> Transform3D:
 	if not SlotID.is_valid(slot_id):
 		return Transform3D.IDENTITY
 
-	if (
-		SlotID.get_lane(slot_id) == SlotID.Lane.MIDDLE
-		and middle_row_card_count == 1
-	):
-		return get_middle_row_center_transform(
-			player_id,
-			SlotID.get_row(slot_id)
-		)
-
+	# Middle cards stay on the exact left/right slot selected by the player.
+	# A single middle card is no longer visually re-centered between the slots.
 	return get_board_anchor_transform(
 		player_id,
 		slot_id
 	)
-

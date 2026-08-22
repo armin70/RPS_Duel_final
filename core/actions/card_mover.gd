@@ -214,3 +214,49 @@ static func board_to_discard(
 		player,
 		slot_id
 	)
+
+
+# Rush-only removal. Unlike Reserve, this card is deliberately not appended
+# to another pile, so no later shuffle can return it to the match.
+static func board_to_removed(
+	player: PlayerState,
+	slot_id: int
+) -> CardInstance:
+	if player == null:
+		return null
+
+	var card: CardInstance = player.board.remove_card(slot_id)
+
+	if card == null:
+		return null
+
+	card.zone = CardZone.Type.REMOVED
+	card.current_slot = CardInstance.NO_SLOT
+
+	return card
+
+
+# Rush mana penalty helper. The penalty is intentionally taken from the
+# CURRENT HAND so the player can see which card is being sacrificed before
+# the hand is replaced for the next turn.
+static func remove_random_hand_card(
+	player: PlayerState
+) -> CardInstance:
+	if player == null or player.hand.is_empty():
+		return null
+
+	var valid_cards: Array[CardInstance] = []
+
+	for card: CardInstance in player.hand:
+		if card != null:
+			valid_cards.append(card)
+
+	if valid_cards.is_empty():
+		return null
+
+	var selected: CardInstance = valid_cards.pick_random()
+	player.hand.erase(selected)
+
+	selected.zone = CardZone.Type.REMOVED
+	selected.current_slot = CardInstance.NO_SLOT
+	return selected

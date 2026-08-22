@@ -2,6 +2,13 @@ class_name MatchEngine
 extends RefCounted
 
 const BOARD_MOVE_MANA_COST: int = 1
+
+
+func get_board_move_mana_cost() -> int:
+	if state != null and state.rush_mode_enabled:
+		return 0
+
+	return BOARD_MOVE_MANA_COST
 var state: MatchState
 var card_factory: CardFactory = CardFactory.new()
 var active_battle_sequence: BattleSequence
@@ -9,13 +16,30 @@ var play_records_by_player: Dictionary = {
 	1: [],
 	2: []
 }
+# Cards removed by the most recent Rush unused-mana penalty. The 3D
+# controller reads this after finish_combat() so it can animate the OLD hand
+# before rebuilding the next-turn hand visuals.
+var last_rush_penalty_cards: Dictionary = {
+	1: [],
+	2: []
+}
+
+# Exact CardInstance references that lost at least one direct PvP clash in the
+# current Rush combat. This snapshot is captured immediately after the battle
+# sequence is built, before presentation/animation can touch any combat state.
+var rush_pvp_loser_snapshot: Dictionary = {
+	1: [],
+	2: []
+}
 func start_match(
 	rules: MatchRules,
 	player_one_deck: DeckDefinition,
 	player_two_deck: DeckDefinition,
-	dealer_deck: DeckDefinition
+	dealer_deck: DeckDefinition,
+	rush_mode_enabled: bool = false
 ) -> MatchState:
 	state = MatchState.new(rules)
+	state.rush_mode_enabled = rush_mode_enabled
 
 	state.player_one.draw_pile = card_factory.build_deck(
 		player_one_deck,
@@ -26,14 +50,15 @@ func start_match(
 		player_two_deck,
 		2
 	)
-	state.dealer.draw_pile = card_factory.build_deck(
-		dealer_deck,
-		0
-	)
+	if not state.rush_mode_enabled:
+		state.dealer.draw_pile = card_factory.build_deck(
+			dealer_deck,
+			0
+		)
 
-	DealerMover.deal_new_board(state.dealer)
+		DealerMover.deal_new_board(state.dealer)
 
-	_run_dealer_enter_behaviors()
+		_run_dealer_enter_behaviors()
 
 	_setup_player(state.player_one)
 	_setup_player(state.player_two)
@@ -141,19 +166,24 @@ func resolve_play_slot(
 			return requested_slot_id
 
 		SlotID.Lane.MIDDLE:
-			# Middle is filled visually as 1 -> 2 cards in Front,
-			# then 1 -> 2 cards in Back. Logical slots stay unchanged so
-			# combat, Dealer targeting, Disable, Cover, etc. keep working.
-			for candidate_slot_id: int in [
-				SlotID.Type.FRONT_MIDDLE_0,
-				SlotID.Type.FRONT_MIDDLE_1,
-				SlotID.Type.BACK_MIDDLE_0,
-				SlotID.Type.BACK_MIDDLE_1
-			]:
-				if player.board.is_slot_empty(
-					candidate_slot_id
-				):
-					return candidate_slot_id
+			# Middle placement is side-selectable again. FRONT_MIDDLE_0 and
+			# FRONT_MIDDLE_1 are two distinct targets, so dropping on one side
+			# never redirects the card to the other side. Back remains front-first
+			# only within the exact middle sub-column the player selected.
+			match requested_slot_id:
+				SlotID.Type.BACK_MIDDLE_0:
+					if player.board.is_slot_empty(
+						SlotID.Type.FRONT_MIDDLE_0
+					):
+						return SlotID.Type.FRONT_MIDDLE_0
+
+				SlotID.Type.BACK_MIDDLE_1:
+					if player.board.is_slot_empty(
+						SlotID.Type.FRONT_MIDDLE_1
+					):
+						return SlotID.Type.FRONT_MIDDLE_1
+
+			return requested_slot_id
 
 	return requested_slot_id
 
@@ -202,30 +232,47 @@ func _normalize_player_front_rows(
 	if player == null:
 		return
 
-	# Each logical column is independent. We never move a MIDDLE_1 back card
-	# into MIDDLE_0 (or vice versa), so PvP / Dealer column identity is stable.
-	for pair: Vector2i in [
-		Vector2i(
-			SlotID.Type.FRONT_LEFT,
-			SlotID.Type.BACK_LEFT
-		),
-		Vector2i(
-			SlotID.Type.FRONT_MIDDLE_0,
-			SlotID.Type.BACK_MIDDLE_0
-		),
-		Vector2i(
-			SlotID.Type.FRONT_MIDDLE_1,
-			SlotID.Type.BACK_MIDDLE_1
-		),
-		Vector2i(
-			SlotID.Type.FRONT_RIGHT,
-			SlotID.Type.BACK_RIGHT
-		)
-	]:
+	# Side lanes keep their original one-to-one promotion behavior.
+	_promote_back_to_front(
+		player,
+		SlotID.Type.FRONT_LEFT,
+		SlotID.Type.BACK_LEFT
+	)
+	_promote_back_to_front(
+		player,
+		SlotID.Type.FRONT_RIGHT,
+		SlotID.Type.BACK_RIGHT
+	)
+
+	# Middle row: first preserve the exact front/back pairing on BOTH sides.
+	# Doing both exact checks before fallback matters when both front slots are
+	# empty: a BACK_MIDDLE_1 card should prefer FRONT_MIDDLE_1, not get stolen
+	# early by FRONT_MIDDLE_0's fallback.
+	_promote_back_to_front(
+		player,
+		SlotID.Type.FRONT_MIDDLE_0,
+		SlotID.Type.BACK_MIDDLE_0
+	)
+	_promote_back_to_front(
+		player,
+		SlotID.Type.FRONT_MIDDLE_1,
+		SlotID.Type.BACK_MIDDLE_1
+	)
+
+	# If a middle Front slot is still empty after its exact-behind check,
+	# allow the remaining card from the other middle Back slot to advance.
+	if player.board.is_slot_empty(SlotID.Type.FRONT_MIDDLE_0):
 		_promote_back_to_front(
 			player,
-			pair.x,
-			pair.y
+			SlotID.Type.FRONT_MIDDLE_0,
+			SlotID.Type.BACK_MIDDLE_1
+		)
+
+	if player.board.is_slot_empty(SlotID.Type.FRONT_MIDDLE_1):
+		_promote_back_to_front(
+			player,
+			SlotID.Type.FRONT_MIDDLE_1,
+			SlotID.Type.BACK_MIDDLE_0
 		)
 
 
@@ -235,6 +282,131 @@ func _normalize_all_player_front_rows() -> void:
 
 	_normalize_player_front_rows(state.player_one)
 	_normalize_player_front_rows(state.player_two)
+
+
+# =========================================================
+# Rush sacrifice / transform
+# =========================================================
+
+func can_rush_transform_card(
+	player_id: int,
+	target_card: CardInstance
+) -> bool:
+	if state == null or not state.rush_mode_enabled:
+		return false
+
+	if state.phase != MatchPhase.Type.MAIN:
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or player.is_ready or target_card == null:
+		return false
+
+	if target_card.owner_id != player_id:
+		return false
+
+	if target_card.zone != CardZone.Type.BOARD:
+		return false
+
+	var current_gesture: CardGesture.Type = target_card.get_gesture()
+	if current_gesture not in [
+		CardGesture.Type.ROCK,
+		CardGesture.Type.PAPER,
+		CardGesture.Type.SCISSORS
+	]:
+		return false
+
+	return not get_rush_sacrifice_candidates(
+		player_id,
+		target_card
+	).is_empty()
+
+
+func get_rush_sacrifice_candidates(
+	player_id: int,
+	target_card: CardInstance
+) -> Array[CardInstance]:
+	var result: Array[CardInstance] = []
+
+	if state == null:
+		return result
+
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return result
+
+	for card: CardInstance in player.board.get_occupied_cards():
+		if card == null or card == target_card:
+			continue
+		result.append(card)
+
+	return result
+
+
+func apply_rush_transform(
+	player_id: int,
+	target_card: CardInstance,
+	new_gesture: CardGesture.Type
+) -> CardInstance:
+	if not can_rush_transform_card(player_id, target_card):
+		return null
+
+	if new_gesture not in [
+		CardGesture.Type.ROCK,
+		CardGesture.Type.PAPER,
+		CardGesture.Type.SCISSORS
+	]:
+		return null
+
+	if target_card.get_gesture() == new_gesture:
+		return null
+
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return null
+
+	var candidates: Array[CardInstance] = \
+		get_rush_sacrifice_candidates(player_id, target_card)
+
+	if candidates.is_empty():
+		return null
+
+	# The player chooses the target type. Only the payment card is random.
+	var sacrifice_card: CardInstance = candidates.pick_random()
+	if sacrifice_card == null:
+		return null
+
+	var sacrifice_slot: int = sacrifice_card.current_slot
+	if not SlotID.is_valid(sacrifice_slot):
+		return null
+
+	var removed_card: CardInstance = CardMover.board_to_removed(
+		player,
+		sacrifice_slot
+	)
+	if removed_card == null:
+		return null
+
+	target_card.set_gesture_override(new_gesture)
+
+	# Removing a Front card may expose a Back card. Keep the normal promotion
+	# rules after the sacrifice payment is removed.
+	_normalize_player_front_rows(player)
+
+	print(
+		"RUSH TRANSFORM | player=",
+		player_id,
+		" | target=",
+		target_card.definition.display_name
+			if target_card.definition != null else "Card",
+		" | new_type=",
+		CardGesture.Type.keys()[new_gesture],
+		" | sacrificed=",
+		removed_card.definition.display_name
+			if removed_card.definition != null else "Card"
+	)
+
+	return removed_card
 
 
 func can_cover_card(
@@ -289,8 +461,8 @@ func can_cover_card(
 		return false
 
 	if not CardGesture.can_cover(
-		card.definition.gesture,
-		target_card.definition.gesture
+		card.get_gesture(),
+		target_card.get_gesture()
 	):
 		return false
 
@@ -403,10 +575,10 @@ func play_card(
 			return false
 
 		var new_gesture: CardGesture.Type = \
-			card.definition.gesture
+			card.get_gesture()
 
 		var old_gesture: CardGesture.Type = \
-			replaced_card.definition.gesture
+			replaced_card.get_gesture()
 
 		if not CardGesture.can_cover(
 			new_gesture,
@@ -539,7 +711,9 @@ func move_board_card(
 		)
 		return false
 
-	if player.current_mana < BOARD_MOVE_MANA_COST:
+	var board_move_mana_cost: int = get_board_move_mana_cost()
+
+	if player.current_mana < board_move_mana_cost:
 		print(
 			"BOARD MOVE FAILED | not enough mana"
 		)
@@ -584,8 +758,8 @@ func move_board_card(
 			return false
 
 		if not CardGesture.can_cover(
-			moving_card.definition.gesture,
-			replaced_card.definition.gesture
+			moving_card.get_gesture(),
+			replaced_card.get_gesture()
 		):
 			print(
 				"BOARD COVER FAILED | moving card "
@@ -620,7 +794,7 @@ func move_board_card(
 	_normalize_player_front_rows(player)
 
 	player.current_mana -= \
-		BOARD_MOVE_MANA_COST
+		board_move_mana_cost
 
 	player.board_move_used_turn = \
 		state.turn_number
@@ -814,6 +988,9 @@ func begin_combat() -> BattleSequence:
 	active_battle_sequence = \
 		BattleResolver.build_sequence(state)
 
+	if state.rush_mode_enabled:
+		_capture_rush_pvp_loser_snapshot()
+
 	return active_battle_sequence
 
 func apply_battle_act(
@@ -935,6 +1112,185 @@ func _send_board_card_to_reserve(
 	)
 
 	return true
+
+
+func _remove_board_card_permanently(
+	player_id: int,
+	card: CardInstance,
+	reason: String
+) -> bool:
+	if card == null or state == null:
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+
+	if player == null:
+		return false
+
+	var slot_id: int = card.current_slot
+
+	if not SlotID.is_valid(slot_id):
+		return false
+
+	if player.board.get_card(slot_id) != card:
+		return false
+
+	var removed_card: CardInstance = CardMover.board_to_removed(
+		player,
+		slot_id
+	)
+
+	if removed_card == null:
+		return false
+
+	print(
+		reason,
+		" | player=",
+		player_id,
+		" | card=",
+		removed_card.definition.display_name,
+		" | slot=",
+		slot_id
+	)
+
+	return true
+
+
+func _append_unique_rush_loser(
+	player_id: int,
+	card: CardInstance,
+	outcome: BattleAct.Outcome
+) -> void:
+	if outcome != BattleAct.Outcome.LOSS:
+		return
+
+	if player_id not in [1, 2] or card == null:
+		return
+
+	if not rush_pvp_loser_snapshot.has(player_id):
+		rush_pvp_loser_snapshot[player_id] = []
+
+	var losers: Array = rush_pvp_loser_snapshot[player_id]
+
+	# A middle card can fight both opposing middle cards. Keep the exact card
+	# only once, but NEVER cancel its LOSS because it also has a WIN/TIE.
+	for value: Variant in losers:
+		var existing := value as CardInstance
+		if existing == card:
+			return
+
+	losers.append(card)
+	rush_pvp_loser_snapshot[player_id] = losers
+
+
+func _capture_rush_pvp_loser_snapshot() -> void:
+	rush_pvp_loser_snapshot = {
+		1: [],
+		2: []
+	}
+
+	if (
+		state == null
+		or not state.rush_mode_enabled
+		or active_battle_sequence == null
+	):
+		return
+
+	for act: BattleAct in active_battle_sequence.acts:
+		if act == null or act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+			continue
+
+		_append_unique_rush_loser(
+			act.attacker_owner_id,
+			act.attacker,
+			act.attacker_outcome
+		)
+		_append_unique_rush_loser(
+			act.defender_owner_id,
+			act.defender,
+			act.defender_outcome
+		)
+
+
+func _find_board_slot_for_card(
+	player: PlayerState,
+	card: CardInstance
+) -> int:
+	if player == null or card == null:
+		return -1
+
+	# Do not trust current_slot here. Rush middle cards participate in multiple
+	# clashes and other cleanup/ability code may change bookkeeping. The board
+	# itself is the source of truth.
+	for slot_id: int in SlotID.all_slots():
+		if player.board.get_card(slot_id) == card:
+			return slot_id
+
+	return -1
+
+
+func _remove_rush_loser_by_reference(
+	player_id: int,
+	card: CardInstance
+) -> bool:
+	if state == null or card == null:
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return false
+
+	var slot_id: int = _find_board_slot_for_card(player, card)
+	if not SlotID.is_valid(slot_id):
+		return false
+
+	var removed_card: CardInstance = CardMover.board_to_removed(
+		player,
+		slot_id
+	)
+
+	if removed_card == null:
+		return false
+
+	print(
+		"RUSH PVP LOSER REMOVED | player=",
+		player_id,
+		" | card=",
+		removed_card.definition.display_name
+			if removed_card.definition != null
+			else "Unknown",
+		" | slot=",
+		slot_id
+	)
+
+	return true
+
+
+func _resolve_rush_pvp_losers() -> void:
+	if state == null or not state.rush_mode_enabled:
+		return
+
+	# The loser set was frozen at begin_combat(). Order no longer matters:
+	# if card X loses first and then beats card Y, BOTH X and Y are still in
+	# this snapshot and both are permanently removed.
+	for player_id: int in [1, 2]:
+		var losers: Array = rush_pvp_loser_snapshot.get(player_id, [])
+
+		for value: Variant in losers:
+			var card := value as CardInstance
+			if card == null:
+				continue
+
+			_remove_rush_loser_by_reference(
+				player_id,
+				card
+			)
+
+	# Do not carry stale loser references into the next turn.
+	rush_pvp_loser_snapshot = {
+		1: [],
+		2: []
+	}
 
 
 func _resolve_killer_cards() -> void:
@@ -1173,14 +1529,84 @@ func _queue_dealer_lane_loser(
 	})
 
 
+
+func _apply_rush_unused_mana_penalty(
+	player: PlayerState
+) -> Array[CardInstance]:
+	var removed_cards: Array[CardInstance] = []
+
+	if (
+		state == null
+		or not state.rush_mode_enabled
+		or player == null
+	):
+		return removed_cards
+
+	var unused_mana: int = maxi(0, player.current_mana)
+	var cards_to_remove: int = floori(
+		float(unused_mana) / 2.0
+	)
+
+	if cards_to_remove <= 0:
+		return removed_cards
+
+	for index: int in range(cards_to_remove):
+		var removed_card: CardInstance = \
+			CardMover.remove_random_hand_card(player)
+
+		if removed_card == null:
+			break
+
+		removed_cards.append(removed_card)
+
+		print(
+			"RUSH UNUSED MANA PENALTY | player=",
+			player.player_id,
+			" | unused_mana=",
+			unused_mana,
+			" | card=",
+			removed_card.definition.display_name
+				if removed_card.definition != null
+				else "Unknown"
+		)
+
+	return removed_cards
+
+
+func get_last_rush_penalty_cards(
+	player_id: int
+) -> Array[CardInstance]:
+	var result: Array[CardInstance] = []
+
+	if not last_rush_penalty_cards.has(player_id):
+		return result
+
+	for value: Variant in last_rush_penalty_cards[player_id]:
+		var card := value as CardInstance
+		if card != null:
+			result.append(card)
+
+	return result
+
+
 func finish_combat() -> bool:
 	if state == null:
 		return false
+
+	last_rush_penalty_cards = {
+		1: [],
+		2: []
+	}
 
 	if state.phase != MatchPhase.Type.BATTLE:
 		return false
 
 	state.phase = MatchPhase.Type.CLEANUP
+
+	# Rush removes every card that lost a direct PvP clash before any normal
+	# Killer/Reserve cleanup can claim it. This is the only permanent removal.
+	if state.rush_mode_enabled:
+		_resolve_rush_pvp_losers()
 
 	# نتیجه تمام Clashها بررسی می‌شود.
 	# اهداف شکست‌خورده و خود Killerها وارد Reserve می‌شوند.
@@ -1188,27 +1614,44 @@ func finish_combat() -> bool:
 
 	# اگر Gladiator Div در یک لاین باشد، کارت‌های بازنده‌ی Clash بین
 	# دو بازیکن در همان لاین بعد از Combat از زمین خارج می‌شوند.
-	_resolve_dealer_lane_losers()
+	if not state.rush_mode_enabled:
+		_resolve_dealer_lane_losers()
 
 	# Cleanup is complete. Any survivor directly behind an empty Front advances.
 	_normalize_all_player_front_rows()
 
-	var dealer_ready: bool = \
-		DealerMover.deal_new_board(
-			state.dealer
-		)
+	if state.rush_mode_enabled:
+		# Direct PvP elimination has priority. If a player lost their final card
+		# in combat, the match ends before unused-mana penalties are considered.
+		if _check_rush_card_victory():
+			return false
 
-	if not dealer_ready:
-		push_error(
-			"Dealer could not deal a new board."
-		)
+		# Every two unspent mana remove one random CURRENT-HAND card permanently.
+		# Both penalties belong to the same end-of-turn cleanup window.
+		last_rush_penalty_cards[1] = \
+			_apply_rush_unused_mana_penalty(state.player_one)
+		last_rush_penalty_cards[2] = \
+			_apply_rush_unused_mana_penalty(state.player_two)
 
-		state.phase = MatchPhase.Type.GAME_OVER
-		return false
+		if _check_rush_card_victory():
+			return false
+	else:
+		var dealer_ready: bool = \
+			DealerMover.deal_new_board(
+				state.dealer
+			)
 
-	# کارت‌های Dealer وارد زمین شده‌اند.
-	# قدرت آن‌ها قبل از شروع چیدن اجرا می‌شود.
-	_run_dealer_enter_behaviors()
+		if not dealer_ready:
+			push_error(
+				"Dealer could not deal a new board."
+			)
+
+			state.phase = MatchPhase.Type.GAME_OVER
+			return false
+
+		# کارت‌های Dealer وارد زمین شده‌اند.
+		# قدرت آن‌ها قبل از شروع چیدن اجرا می‌شود.
+		_run_dealer_enter_behaviors()
 
 	state.turn_number += 1
 
@@ -1225,6 +1668,38 @@ func finish_combat() -> bool:
 
 
 	state.phase = MatchPhase.Type.MAIN
+
+	return true
+
+
+func _check_rush_card_victory() -> bool:
+	if state == null or not state.rush_mode_enabled:
+		return false
+
+	var player_one_cards: int = \
+		state.player_one.get_remaining_card_count()
+	var player_two_cards: int = \
+		state.player_two.get_remaining_card_count()
+
+	if player_one_cards > 0 and player_two_cards > 0:
+		return false
+
+	if player_one_cards <= 0 and player_two_cards <= 0:
+		# Both players can lose their final cards in different lanes during the
+		# same combat. Winner 0 is a real draw, not a score-based tiebreaker.
+		state.winner_id = 0
+	elif player_one_cards <= 0:
+		state.winner_id = 2
+	else:
+		state.winner_id = 1
+
+	state.phase = MatchPhase.Type.GAME_OVER
+
+	print("")
+	print("========== RUSH GAME OVER ==========")
+	print("WINNER ID: ", state.winner_id)
+	print("PLAYER 1 CARDS: ", player_one_cards)
+	print("PLAYER 2 CARDS: ", player_two_cards)
 
 	return true
 
@@ -1531,6 +2006,10 @@ func finalize_combat_score() -> bool:
 		return false
 
 	if state.phase != MatchPhase.Type.BATTLE:
+		return false
+
+	# Rush scores may still be displayed, but they never end the match.
+	if state.rush_mode_enabled:
 		return false
 
 	# فقط وقتی تمام BattleActهای این Turn محاسبه شدند

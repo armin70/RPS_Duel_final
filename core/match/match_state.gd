@@ -14,6 +14,7 @@ var phase: MatchPhase.Type = MatchPhase.Type.SETUP
 # 1 یعنی Player One.
 # 2 یعنی Player Two.
 var winner_id: int = 0
+var rush_mode_enabled: bool = false
 
 func _init(
 	new_rules: MatchRules

@@ -287,6 +287,18 @@ func play_turn(
 	if opponent == null:
 		return
 
+	# Rush has a completely separate planner. It does not score Dealer combat
+	# at all; it optimizes permanent PvP eliminations, survival, free movement,
+	# and the unused-mana sacrifice rule.
+	if state.rush_mode_enabled:
+		_play_rush_turn(
+			engine,
+			state,
+			bot,
+			opponent
+		)
+		return
+
 	var completed_actions: int = 0
 
 	print(
@@ -396,6 +408,572 @@ func play_turn(
 			" | mana_left=",
 			bot.current_mana
 		)
+
+
+# =========================================================
+# RUSH MODE PLANNER
+# =========================================================
+
+func _play_rush_turn(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> void:
+	if engine == null or state == null or bot == null or opponent == null:
+		return
+
+	print(
+		"BOT STRATEGY | RUSH | mana=",
+		bot.current_mana,
+		" | bot_cards=",
+		bot.get_remaining_card_count(),
+		" | opponent_cards=",
+		opponent.get_remaining_card_count()
+	)
+
+	# Movement costs zero mana in Rush but remains limited to once per turn.
+	# Use it first to rescue a card from a known permanent loss or create a
+	# better elimination matchup.
+	_try_best_rush_move(
+		engine,
+		state,
+		bot,
+		opponent
+	)
+
+	# Rush-only sacrifice/transform decision. The bot chooses the new gesture
+	# strategically, but the payment card is still randomly selected by Engine,
+	# exactly like the player's button. Keep it conservative: sacrifice only to
+	# rescue a board card from a clearly bad permanent-loss position.
+	_try_best_rush_transform(
+		engine,
+		state,
+		bot,
+		opponent
+	)
+
+	var completed_actions: int = 0
+	var blocked_candidates: Dictionary = {}
+
+	while completed_actions < MAX_ACTIONS_PER_TURN:
+		var best_candidate: Dictionary = \
+			_find_best_rush_play_candidate(
+				state,
+				bot,
+				opponent,
+				blocked_candidates
+			)
+
+		if best_candidate.is_empty():
+			break
+
+		var best_score: float = float(
+			best_candidate.get("score", INVALID_SCORE)
+		)
+
+		# If less than two mana remain there is no Rush sacrifice. Do not throw
+		# a card onto the board for a clearly bad matchup just to spend the last
+		# harmless point of mana.
+		if bot.current_mana < 2 and best_score < 0.0:
+			break
+
+		# A negative score while a sacrifice is pending means the planner judged
+		# that intentionally losing a random hand card is safer than this play.
+		if (
+			bot.current_mana >= 2
+			and best_score < 0.0
+		):
+			break
+
+		var card := best_candidate.get("card", null) as CardInstance
+		var slot_id: int = int(best_candidate.get("slot_id", -1))
+
+		if card == null or not SlotID.is_valid(slot_id):
+			break
+
+		var candidate_key: String = _get_candidate_key(card, slot_id)
+		var success: bool = engine.play_card(
+			bot.player_id,
+			card,
+			slot_id
+		)
+
+		if not success:
+			blocked_candidates[candidate_key] = true
+			continue
+
+		completed_actions += 1
+		blocked_candidates.clear()
+
+		print(
+			"RUSH BOT PLAY | card=",
+			card.definition.display_name,
+			" | slot=",
+			slot_id,
+			" | score=",
+			best_score,
+			" | mana_left=",
+			bot.current_mana,
+			" | pending_penalty=",
+			_rush_penalty_count_for_mana(bot.current_mana)
+		)
+
+
+func _find_best_rush_play_candidate(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	blocked_candidates: Dictionary
+) -> Dictionary:
+	var best_candidate: Dictionary = {}
+	var best_score: float = INVALID_SCORE
+
+	for card: CardInstance in bot.hand:
+		if card == null or card.definition == null:
+			continue
+
+		if card.definition.mana_cost > bot.current_mana:
+			continue
+
+		for slot_id: int in SlotID.all_slots():
+			var candidate_key: String = _get_candidate_key(card, slot_id)
+
+			if blocked_candidates.has(candidate_key):
+				continue
+
+			if not _is_legal_play_candidate(
+				state,
+				bot,
+				card,
+				slot_id
+			):
+				continue
+
+			var score: float = _score_rush_play_candidate(
+				state,
+				bot,
+				opponent,
+				card,
+				slot_id
+			)
+
+			# Small noise prevents exact repetition without changing the Rush goals.
+			score += random.randf_range(-0.08, 0.08)
+
+			if score > best_score:
+				best_score = score
+				best_candidate = {
+					"card": card,
+					"slot_id": slot_id,
+					"score": score
+				}
+
+	return best_candidate
+
+
+func _score_rush_play_candidate(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	card: CardInstance,
+	slot_id: int
+) -> float:
+	if card == null or card.definition == null:
+		return INVALID_SCORE
+
+	var score: float = _score_rush_card_matchups(
+		state,
+		bot,
+		opponent,
+		card,
+		slot_id
+	)
+
+	var cost: int = card.definition.mana_cost
+	var penalty_before: int = _rush_penalty_count_for_mana(
+		bot.current_mana
+	)
+	var penalty_after: int = _rush_penalty_count_for_mana(
+		maxi(0, bot.current_mana - cost)
+	)
+	var sacrifices_avoided: int = maxi(
+		0,
+		penalty_before - penalty_after
+	)
+
+	# Preventing a random permanent hand loss is a core Rush objective.
+	score += float(sacrifices_avoided) * 24.0
+
+	# Prefer exact/near-exact mana usage when tactical values are close.
+	if bot.current_mana - cost < 2:
+		score += 2.5
+
+	var replaced: CardInstance = bot.board.get_card(slot_id)
+	if replaced != null:
+		# Cover does not permanently delete the old card in Rush, but it removes
+		# a useful body from this combat, so valuable cards should not be covered
+		# casually.
+		score -= _card_importance(replaced) * 0.35
+
+	var behavior: CardBehavior = card.definition.behavior
+
+	if behavior is DefenseBehavior:
+		score += 4.0
+	elif behavior is FrontShieldBehavior:
+		score += 5.0
+	elif behavior is DisableGestureBehavior:
+		score += _score_rush_disabler(
+			state,
+			bot,
+			opponent,
+			behavior as DisableGestureBehavior,
+			slot_id
+		)
+
+	return score
+
+
+func _score_rush_disabler(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	behavior: DisableGestureBehavior,
+	slot_id: int
+) -> float:
+	if behavior == null:
+		return 0.0
+
+	var affected: int = 0
+	var valuable_affected: float = 0.0
+
+	for target_slot_id: int in SlotID.all_slots():
+		var target: CardInstance = _get_visible_opponent_card(
+			state,
+			opponent,
+			target_slot_id
+		)
+
+		if target == null or target.definition == null:
+			continue
+
+		if not behavior.disables_target(
+			slot_id,
+			target_slot_id,
+			target
+		):
+			continue
+
+		if _is_card_disabled_for_bot_view(
+			state,
+			bot,
+			opponent.player_id,
+			target_slot_id,
+			target
+		):
+			continue
+
+		affected += 1
+		valuable_affected += _card_importance(target)
+
+	return float(affected) * 6.0 + valuable_affected * 0.25
+
+
+func _score_rush_card_matchups(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	card: CardInstance,
+	slot_id: int
+) -> float:
+	if card == null or card.definition == null:
+		return INVALID_SCORE
+
+	var known_targets: int = 0
+	var wins: int = 0
+	var losses: int = 0
+	var ties: int = 0
+	var defeated_value: float = 0.0
+
+	for target_slot_id: int in _get_opponent_target_slots(slot_id):
+		var target: CardInstance = _get_visible_opponent_card(
+			state,
+			opponent,
+			target_slot_id
+		)
+
+		if target == null or target.definition == null:
+			continue
+
+		known_targets += 1
+
+		var outcome: int = _compare_gestures(
+			card.get_gesture(),
+			target.get_gesture()
+		)
+
+		if (
+			card.definition.behavior is CreditCardBehavior
+			and target.get_gesture() == CardGesture.Type.SCISSORS
+		):
+			outcome = BattleAct.Outcome.WIN
+
+		var bot_disabled: bool = _is_card_disabled_for_bot_view(
+			state,
+			bot,
+			bot.player_id,
+			slot_id,
+			card
+		)
+		var opponent_disabled: bool = _is_card_disabled_for_bot_view(
+			state,
+			bot,
+			opponent.player_id,
+			target_slot_id,
+			target
+		)
+
+		var new_disabler := card.definition.behavior as DisableGestureBehavior
+		if (
+			new_disabler != null
+			and new_disabler.disables_target(
+				slot_id,
+				target_slot_id,
+				target
+			)
+		):
+			opponent_disabled = true
+
+		if bot_disabled and outcome == BattleAct.Outcome.WIN:
+			outcome = BattleAct.Outcome.TIE
+
+		var opponent_outcome: int = _opposite_outcome(outcome)
+		if opponent_disabled and opponent_outcome == BattleAct.Outcome.WIN:
+			outcome = BattleAct.Outcome.TIE
+
+		match outcome:
+			BattleAct.Outcome.WIN:
+				wins += 1
+				defeated_value += _card_importance(target)
+			BattleAct.Outcome.LOSS:
+				losses += 1
+			_:
+				ties += 1
+
+	# Fair mode does not peek at current-turn secret cards. Unknown lanes get a
+	# mild risk tax instead of fake certainty.
+	if known_targets == 0:
+		return -2.0 - _card_importance(card) * 0.10
+
+	var score: float = 0.0
+	score += float(wins) * 18.0
+	score += defeated_value * 0.70
+	score += float(ties) * 1.5
+
+	# CRITICAL Rush rule: one LOSS is enough to permanently eliminate this
+	# CardInstance, even if the same middle card also has one or more WINs.
+	if losses > 0:
+		score -= 28.0
+		score -= _card_importance(card) * 1.25
+
+	return score
+
+
+func _try_best_rush_move(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> bool:
+	if engine == null or state == null or bot == null or opponent == null:
+		return false
+
+	if bot.board_move_used_turn == state.turn_number:
+		return false
+
+	var best_from: int = -1
+	var best_to: int = -1
+	var best_improvement: float = 2.0
+
+	for from_slot_id: int in SlotID.all_slots():
+		var moving_card: CardInstance = bot.board.get_card(from_slot_id)
+
+		if moving_card == null or moving_card.definition == null:
+			continue
+
+		var current_score: float = _score_rush_card_matchups(
+			state,
+			bot,
+			opponent,
+			moving_card,
+			from_slot_id
+		)
+
+		for to_slot_id: int in SlotID.all_slots():
+			if not _is_legal_move_candidate(
+				state,
+				bot,
+				moving_card,
+				from_slot_id,
+				to_slot_id
+			):
+				continue
+
+			# Rush repositioning is for survival/targeting. Do not burn another own
+			# board card through a Cover while a free empty destination exists.
+			if bot.board.get_card(to_slot_id) != null:
+				continue
+
+			var destination_score: float = _score_rush_card_matchups(
+				state,
+				bot,
+				opponent,
+				moving_card,
+				to_slot_id
+			)
+			var improvement: float = destination_score - current_score
+
+			if improvement > best_improvement:
+				best_improvement = improvement
+				best_from = from_slot_id
+				best_to = to_slot_id
+
+	if best_from == -1 or best_to == -1:
+		return false
+
+	var moved: bool = engine.move_board_card(
+		bot.player_id,
+		best_from,
+		best_to
+	)
+
+	if moved:
+		print(
+			"RUSH BOT FREE MOVE | from=",
+			best_from,
+			" | to=",
+			best_to,
+			" | improvement=",
+			best_improvement
+		)
+
+	return moved
+
+
+
+func _try_best_rush_transform(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> bool:
+	if engine == null or state == null or bot == null or opponent == null:
+		return false
+
+	var board_cards: Array[CardInstance] = bot.board.get_occupied_cards()
+	if board_cards.size() < 2:
+		return false
+
+	var best_target: CardInstance
+	var best_gesture: int = -1
+	var best_gain: float = 6.0
+
+	for target: CardInstance in board_cards:
+		if target == null or target.definition == null:
+			continue
+		if not engine.can_rush_transform_card(bot.player_id, target):
+			continue
+
+		var slot_id: int = target.current_slot
+		if not SlotID.is_valid(slot_id):
+			continue
+
+		var current_score: float = _score_rush_card_matchups(
+			state,
+			bot,
+			opponent,
+			target,
+			slot_id
+		)
+
+		# Do not permanently burn another own card just to optimize an already
+		# acceptable matchup. Sacrifice is a rescue tool first.
+		if current_score >= 0.0:
+			continue
+
+		var old_override: int = target.gesture_override
+		var old_gesture: CardGesture.Type = target.get_gesture()
+
+		for candidate_gesture: int in [
+			CardGesture.Type.ROCK,
+			CardGesture.Type.PAPER,
+			CardGesture.Type.SCISSORS
+		]:
+			if candidate_gesture == old_gesture:
+				continue
+
+			var candidate_type: CardGesture.Type = candidate_gesture
+			target.set_gesture_override(candidate_type)
+			var transformed_score: float = _score_rush_card_matchups(
+				state,
+				bot,
+				opponent,
+				target,
+				slot_id
+			)
+
+			var candidates: Array[CardInstance] = \
+				engine.get_rush_sacrifice_candidates(bot.player_id, target)
+			var expected_cost: float = 18.0
+			if not candidates.is_empty():
+				var importance_sum: float = 0.0
+				for other: CardInstance in candidates:
+					importance_sum += _card_importance(other)
+				expected_cost += (
+					importance_sum / float(candidates.size())
+				) * 0.75
+
+			var gain: float = (
+				transformed_score
+				- current_score
+				- expected_cost
+			)
+
+			if gain > best_gain:
+				best_gain = gain
+				best_target = target
+				best_gesture = candidate_gesture
+
+		target.gesture_override = old_override
+
+	if best_target == null or best_gesture < 0:
+		return false
+
+	var selected_gesture: CardGesture.Type = best_gesture
+	var removed_card: CardInstance = engine.apply_rush_transform(
+		bot.player_id,
+		best_target,
+		selected_gesture
+	)
+
+	if removed_card == null:
+		return false
+
+	print(
+		"RUSH BOT SACRIFICE | target=",
+		best_target.definition.display_name,
+		" | new_type=",
+		CardGesture.Type.keys()[selected_gesture],
+		" | sacrificed=",
+		removed_card.definition.display_name
+			if removed_card.definition != null else "Card",
+		" | tactical_gain=",
+		best_gain
+	)
+	return true
+
+func _rush_penalty_count_for_mana(mana: int) -> int:
+	return floori(float(maxi(0, mana)) / 2.0)
 
 
 func _find_best_play_candidate(
@@ -539,8 +1117,8 @@ func _is_legal_play_candidate(
 		return false
 
 	return CardGesture.can_cover(
-		card.definition.gesture,
-		replaced_card.definition.gesture
+		card.get_gesture(),
+		replaced_card.get_gesture()
 	)
 
 
@@ -630,14 +1208,14 @@ func _score_against_opponent(
 			continue
 
 		var bot_outcome: int = _compare_gestures(
-			card.definition.gesture,
-			target.definition.gesture
+			card.get_gesture(),
+			target.get_gesture()
 		)
 
 		# Credit Card در Turn ورود Scissors را می‌برد.
 		if (
 			card.definition.behavior is CreditCardBehavior
-			and target.definition.gesture
+			and target.get_gesture()
 			== CardGesture.Type.SCISSORS
 		):
 			bot_outcome = BattleAct.Outcome.WIN
@@ -747,8 +1325,8 @@ func _score_against_dealer(
 			continue
 
 		var outcome: int = _compare_gestures(
-			card.definition.gesture,
-			dealer_card.definition.gesture
+			card.get_gesture(),
+			dealer_card.get_gesture()
 		)
 
 		if card.definition.behavior is MustacheRockBehavior:
@@ -757,14 +1335,14 @@ func _score_against_dealer(
 
 		elif card.definition.behavior is ChainsawBehavior:
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				!= CardGesture.Type.ROCK
 			):
 				outcome = BattleAct.Outcome.WIN
 
 		elif card.definition.behavior is CreditCardBehavior:
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				== CardGesture.Type.SCISSORS
 			):
 				outcome = BattleAct.Outcome.WIN
@@ -856,7 +1434,7 @@ func _score_special_behavior(
 				continue
 
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				!= CardGesture.Type.ROCK
 			):
 				non_rock_dealers += 1
@@ -1057,11 +1635,17 @@ func _calculate_move_net_benefit(
 		to_slot_id
 	)
 
-	# Mana itself has value. A marginal positional improvement is not enough.
+	# Mana itself has value in normal mode. Rush board movement is free.
+	var move_mana_penalty: float = (
+		0.0
+		if state.rush_mode_enabled
+		else STRATEGIC_MOVE_MANA_PENALTY
+	)
+
 	var benefit: float = (
 		destination_score
 		- current_score
-		- STRATEGIC_MOVE_MANA_PENALTY
+		- move_mana_penalty
 	)
 
 	var replaced: CardInstance = bot.board.get_card(
@@ -1106,7 +1690,7 @@ func _try_best_strategic_move(
 	if engine == null or state == null or bot == null:
 		return false
 
-	if bot.current_mana < BOARD_MOVE_MANA_COST:
+	if bot.current_mana < engine.get_board_move_mana_cost():
 		return false
 
 	if bot.board_move_used_turn == state.turn_number:
@@ -1182,7 +1766,7 @@ func _try_reposition_disabled_card(
 	bot: PlayerState,
 	opponent: PlayerState
 ) -> bool:
-	if bot.current_mana < BOARD_MOVE_MANA_COST:
+	if bot.current_mana < engine.get_board_move_mana_cost():
 		return false
 
 	if bot.board_move_used_turn == state.turn_number:
@@ -1555,8 +2139,8 @@ func _target_has_a_real_win(
 			continue
 
 		if _compare_gestures(
-			target.definition.gesture,
-			bot_card.definition.gesture
+			target.get_gesture(),
+			bot_card.get_gesture()
 		) == BattleAct.Outcome.WIN:
 			return true
 
@@ -1577,20 +2161,20 @@ func _target_has_a_real_win(
 			continue
 
 		var outcome: int = _compare_gestures(
-			target.definition.gesture,
-			dealer_card.definition.gesture
+			target.get_gesture(),
+			dealer_card.get_gesture()
 		)
 
 		if target.definition.behavior is CreditCardBehavior:
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				== CardGesture.Type.SCISSORS
 			):
 				outcome = BattleAct.Outcome.WIN
 
 		elif target.definition.behavior is ChainsawBehavior:
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				!= CardGesture.Type.ROCK
 			):
 				outcome = BattleAct.Outcome.WIN
@@ -1658,8 +2242,8 @@ func _is_legal_move_candidate(
 		return false
 
 	return CardGesture.can_cover(
-		moving_card.definition.gesture,
-		replaced.definition.gesture
+		moving_card.get_gesture(),
+		replaced.get_gesture()
 	)
 
 
@@ -1762,7 +2346,7 @@ func _count_collector_targets(
 			continue
 
 		if (
-			target.definition.gesture
+			target.get_gesture()
 			!= behavior.collected_gesture
 		):
 			continue
@@ -1798,7 +2382,7 @@ func _count_other_rocks_for_view(
 			continue
 
 		if (
-			card.definition.gesture
+			card.get_gesture()
 			== CardGesture.Type.ROCK
 		):
 			count += 1
@@ -1836,7 +2420,7 @@ func _card_importance(card: CardInstance) -> float:
 	elif behavior is DiscardLaneDrawBehavior:
 		value += 3.0
 
-	if card.definition.gesture == CardGesture.Type.DIV:
+	if card.get_gesture() == CardGesture.Type.DIV:
 		value += 12.0
 
 	value += float(card.shield_count) * 2.0
@@ -1925,8 +2509,8 @@ func _score_dealer_pvp_consequence(
 		known_targets += 1
 
 		var outcome: int = _compare_gestures(
-			card.definition.gesture,
-			target.definition.gesture
+			card.get_gesture(),
+			target.get_gesture()
 		)
 
 		if outcome == BattleAct.Outcome.LOSS:

@@ -19,7 +19,7 @@ func disables_target(
 
 	# هنوز فقط Gesture تعیین‌شده را Disable می‌کند.
 	if (
-		target_card.definition.gesture
+		target_card.get_gesture()
 		!= disabled_gesture
 	):
 		return false

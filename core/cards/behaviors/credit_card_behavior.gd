@@ -30,7 +30,7 @@ func modify_battle_outcome(
 	# کارت بانکی فقط در اولین Turn می‌تواند
 	# Scissors را برخلاف Paper معمولی شکست دهد.
 	if (
-		opponent_card.definition.gesture
+		opponent_card.get_gesture()
 		!= CardGesture.Type.SCISSORS
 	):
 		return current_outcome

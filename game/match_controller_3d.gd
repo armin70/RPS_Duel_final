@@ -13,8 +13,17 @@ const CARD_DETAIL_OVERLAY_SCRIPT: Script = preload(
 const DECK_SELECTION_SCREEN_SCRIPT: Script = preload(
 	"res://game/deck_builder/deck_selection_screen.gd"
 )
+const RUSH_SACRIFICE_CONTROL_SCRIPT: Script = preload(
+	"res://game/ui/rush_sacrifice_control.gd"
+)
 const DEFAULT_DECK_BUILDER_SETTINGS: DeckBuilderSettings = preload(
 	"res://data/deck_builder/default_deck_builder_settings.tres"
+)
+const RUSH_MATCH_RULES: MatchRules = preload(
+	"res://data/rules/rush_match_rules.tres"
+)
+const RUSH_DECK: DeckDefinition = preload(
+	"res://data/decks/rush_deck.tres"
 )
 const COMBAT_RESULT_VFX_SCRIPT: Script = preload(
 	"res://game/vfx/combat_result_vfx_3d.gd"
@@ -52,6 +61,9 @@ var collector_pull_delay: float = 0.20
 @export var player_one_deck: DeckDefinition
 @export var player_two_deck: DeckDefinition
 @export var dealer_deck: DeckDefinition
+
+@export_category("Game Mode")
+@export var rush_mode_enabled: bool = false
 
 @export_category("Player Deck Choice")
 @export var player_one_deck_2: DeckDefinition
@@ -121,6 +133,12 @@ var invalid_cover_flash_time: float = 0.22
 @export_range(0.05, 0.5, 0.01)
 var board_reflow_time: float = 0.16
 
+@export_category("Early Drop Highlight")
+# Highlight the intended board slot after the pointer has travelled roughly
+# one quarter of the route toward it. The real drop still needs an exact hit.
+@export_range(0.10, 0.75, 0.05)
+var early_drop_highlight_progress_ratio: float = 0.25
+
 
 @export_category("Bot and Reveal")
 @export var bot_think_time: float = 0.3
@@ -128,6 +146,12 @@ var board_reflow_time: float = 0.16
 @export_range(0.0, 2.0, 0.05)
 var bot_action_pause: float = 0.45
 @export var reveal_drop_height: float = 0.4
+
+@export_category("Rush Penalty Animation")
+@export_range(0.10, 1.50, 0.05)
+var rush_penalty_raise_height: float = 0.55
+@export_range(0.10, 1.50, 0.05)
+var rush_penalty_fade_time: float = 0.55
 
 @export_category("Combat Animation")
 @export_range(0.0, 1.0, 0.01)
@@ -204,6 +228,8 @@ var deck_choice_cards: Array[Card3D] = []
 var deck_selection_screen: DeckSelectionScreen
 var tutorial_controller: TutorialController
 var card_detail_overlay: CardDetailOverlay
+var rush_sacrifice_control: RushSacrificeControl
+var rush_sacrifice_target: CardInstance
 
 
 func _ready() -> void:
@@ -217,6 +243,7 @@ func _ready() -> void:
 		return
 
 	_ensure_card_detail_overlay()
+	_ensure_rush_sacrifice_control()
 
 	bot_player_id = 2 if local_player_id == 1 else 1
 
@@ -251,6 +278,250 @@ func _ensure_card_detail_overlay() -> void:
 	card_detail_overlay.name = "CardDetailOverlay"
 	hud.add_child(card_detail_overlay)
 
+
+
+func _ensure_rush_sacrifice_control() -> void:
+	if is_instance_valid(rush_sacrifice_control):
+		return
+
+	if not is_instance_valid(hud):
+		return
+
+	rush_sacrifice_control = \
+		RUSH_SACRIFICE_CONTROL_SCRIPT.new() as RushSacrificeControl
+
+	if rush_sacrifice_control == null:
+		push_error("Could not create RushSacrificeControl.")
+		return
+
+	rush_sacrifice_control.name = "RushSacrificeControl"
+	hud.add_child(rush_sacrifice_control)
+	rush_sacrifice_control.sacrifice_drop_requested.connect(
+		Callable(self, "_on_rush_sacrifice_drop_requested")
+	)
+	rush_sacrifice_control.gesture_chosen.connect(
+		Callable(self, "_on_rush_sacrifice_gesture_chosen")
+	)
+	rush_sacrifice_control.choice_cancelled.connect(
+		Callable(self, "_on_rush_sacrifice_choice_cancelled")
+	)
+
+
+func _refresh_rush_sacrifice_ui() -> void:
+	if not is_instance_valid(rush_sacrifice_control):
+		return
+
+	var active: bool = (
+		state != null
+		and state.rush_mode_enabled
+	)
+	rush_sacrifice_control.set_rush_visible(active)
+
+	if not active:
+		return
+
+	var player: PlayerState = state.get_player(local_player_id)
+	if player != null:
+		rush_sacrifice_control.set_remaining_cards(
+			_get_rush_remaining_cards(player)
+		)
+
+	var available: bool = (
+		not interaction_locked
+		and state.phase == MatchPhase.Type.MAIN
+		and player != null
+		and not player.is_ready
+		and rush_sacrifice_target == null
+	)
+	rush_sacrifice_control.set_interaction_available(available)
+
+
+func _get_rush_remaining_cards(player: PlayerState) -> Array[CardInstance]:
+	var cards: Array[CardInstance] = []
+	if player == null:
+		return cards
+
+	# Keep every physical card instance that still belongs to the player.
+	# REMOVED cards are absent from all of these collections by design.
+	for card: CardInstance in player.board.get_occupied_cards():
+		if card != null:
+			cards.append(card)
+	for card: CardInstance in player.hand:
+		if card != null:
+			cards.append(card)
+	for card: CardInstance in player.draw_pile:
+		if card != null:
+			cards.append(card)
+	for card: CardInstance in player.discard_pile:
+		if card != null:
+			cards.append(card)
+	for card: CardInstance in player.reserve_pile:
+		if card != null:
+			cards.append(card)
+
+	cards.sort_custom(Callable(self, "_sort_rush_remaining_cards"))
+	return cards
+
+
+func _sort_rush_remaining_cards(a: CardInstance, b: CardInstance) -> bool:
+	if a == null or a.definition == null:
+		return false
+	if b == null or b.definition == null:
+		return true
+
+	var a_name: String = a.definition.display_name.to_lower()
+	var b_name: String = b.definition.display_name.to_lower()
+	if a_name == b_name:
+		return a.instance_id < b.instance_id
+	return a_name < b_name
+
+
+func _on_rush_sacrifice_drop_requested(
+	screen_position: Vector2
+) -> void:
+	if (
+		engine == null
+		or state == null
+		or not state.rush_mode_enabled
+		or interaction_locked
+	):
+		if is_instance_valid(rush_sacrifice_control):
+			rush_sacrifice_control.show_message(
+				"این گزینه فقط در زمان نوبت شما فعال هست."
+			)
+		return
+
+	var target_view: Card3D = _get_card_view_under_screen_position(
+		screen_position
+	)
+	if target_view == null or target_view.card_instance == null:
+		rush_sacrifice_control.show_message(
+			"فلش را مستقیماً روی یکی از کارت‌های زمین خودت رها کن."
+		)
+		return
+
+	var target_card: CardInstance = target_view.card_instance
+	if target_card.owner_id != local_player_id or target_card.zone != CardZone.Type.BOARD:
+		rush_sacrifice_control.show_message(
+			"یکی از کارت های زمین خود را انتخاب کنید"
+		)
+		return
+
+	if not engine.can_rush_transform_card(local_player_id, target_card):
+		var player: PlayerState = state.get_player(local_player_id)
+		if player != null and player.board.get_occupied_cards().size() < 2:
+			rush_sacrifice_control.show_message(
+				"حداقل یک کارت دیگر برای فدا شدن نیاز دارید."
+			)
+		else:
+			rush_sacrifice_control.show_message(
+				"این کارت در حال حاضر قادر به تبدیل شدن نیست."
+			)
+		return
+
+	rush_sacrifice_target = target_card
+	interaction_locked = true
+	hud.set_interaction_enabled(false)
+	rush_sacrifice_control.set_interaction_available(false)
+	rush_sacrifice_control.show_gesture_choices(
+		target_card.get_gesture()
+	)
+
+
+func _get_card_view_under_screen_position(
+	screen_position: Vector2
+) -> Card3D:
+	if camera_3d == null:
+		return null
+
+	var ray_origin: Vector3 = camera_3d.project_ray_origin(screen_position)
+	var ray_direction: Vector3 = camera_3d.project_ray_normal(screen_position)
+	var query := PhysicsRayQueryParameters3D.create(
+		ray_origin,
+		ray_origin + ray_direction * 1000.0
+	)
+	query.collision_mask = 1
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+
+	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if result.is_empty():
+		return null
+
+	return result.get("collider", null) as Card3D
+
+
+func _on_rush_sacrifice_gesture_chosen(gesture: int) -> void:
+	var target_card: CardInstance = rush_sacrifice_target
+	if target_card == null or engine == null:
+		_finish_rush_sacrifice_interaction()
+		return
+
+	var selected_gesture: CardGesture.Type = gesture
+	var removed_card: CardInstance = engine.apply_rush_transform(
+		local_player_id,
+		target_card,
+		selected_gesture
+	)
+
+	if removed_card == null:
+		if is_instance_valid(rush_sacrifice_control):
+			rush_sacrifice_control.show_message(
+				"Sacrifice could not be completed. No card was removed."
+			)
+		_finish_rush_sacrifice_interaction()
+		return
+
+	var target_view := card_views.get(
+		target_card.instance_id,
+		null
+	) as Card3D
+	if target_view != null:
+		target_view.refresh_gesture_override_label()
+
+	var removed_view := card_views.get(
+		removed_card.instance_id,
+		null
+	) as Card3D
+
+	if removed_view != null and is_instance_valid(removed_view):
+		var remove_duration: float = removed_view.play_rush_penalty_remove(
+			rush_penalty_raise_height,
+			rush_penalty_fade_time
+		)
+		if remove_duration > 0.0:
+			await get_tree().create_timer(remove_duration).timeout
+
+		card_views.erase(removed_card.instance_id)
+		if is_instance_valid(removed_view):
+			removed_view.queue_free()
+
+	_sync_visual_slots_for_player(local_player_id)
+	await _refresh_board_card_positions(local_player_id, true)
+	_refresh_board_shield_visuals(false)
+
+	if hud != null:
+		hud.refresh(state, local_player_id)
+
+	if is_instance_valid(rush_sacrifice_control):
+		rush_sacrifice_control.show_message(
+			"Type changed to %s. One other board card was permanently sacrificed."
+			% CardGesture.Type.keys()[target_card.get_gesture()]
+		)
+
+	_finish_rush_sacrifice_interaction()
+
+
+func _on_rush_sacrifice_choice_cancelled() -> void:
+	_finish_rush_sacrifice_interaction()
+
+
+func _finish_rush_sacrifice_interaction() -> void:
+	rush_sacrifice_target = null
+	interaction_locked = false
+	if hud != null:
+		hud.set_interaction_enabled(true)
+	_refresh_rush_sacrifice_ui()
 
 func _ensure_vfx_manager() -> void:
 	if is_instance_valid(vfx_manager):
@@ -375,6 +646,17 @@ func begin_deck_selection() -> void:
 	hud.set_interaction_enabled(false)
 
 	_show_deck_selection_screen()
+
+
+func begin_rush_match() -> void:
+	if state != null:
+		return
+
+	rush_mode_enabled = true
+	tutorial_enabled = false
+	await _start_match_with_selected_deck(
+		RUSH_DECK
+	)
 
 
 func _show_deck_selection_screen() -> void:
@@ -652,15 +934,26 @@ func _clear_deck_choice_cards() -> void:
 func _start_match_with_selected_deck(
 	selected_deck: DeckDefinition
 ) -> void:
-	player_one_deck = selected_deck
+	var match_rules: MatchRules = rules
+	var match_player_one_deck: DeckDefinition = selected_deck
+	var match_player_two_deck: DeckDefinition = player_two_deck
+
+	if rush_mode_enabled:
+		match_rules = RUSH_MATCH_RULES
+		match_player_one_deck = RUSH_DECK
+		match_player_two_deck = RUSH_DECK
+	else:
+		player_one_deck = selected_deck
 
 	engine = MatchEngine.new()
 	state = engine.start_match(
-		rules,
-		player_one_deck,
-		player_two_deck,
-		dealer_deck
+		match_rules,
+		match_player_one_deck,
+		match_player_two_deck,
+		dealer_deck,
+		rush_mode_enabled
 	)
+	_apply_game_mode_visuals()
 
 	if tutorial_enabled:
 		_ensure_tutorial_controller()
@@ -681,12 +974,32 @@ func _start_match_with_selected_deck(
 	hud.set_interaction_enabled(true)
 
 	interaction_locked = false
+	_refresh_rush_sacrifice_ui()
 	_refresh_balance_scale()
 
 	if tutorial_enabled and tutorial_controller != null:
 		tutorial_controller.start()
 
-	print("Match started with selected player deck.")
+	print(
+		"Rush match started with normal decks."
+		if rush_mode_enabled
+		else "Match started with selected player deck."
+	)
+
+
+func _apply_game_mode_visuals() -> void:
+	if is_instance_valid(game_layout):
+		var dealer_row := game_layout.get_node_or_null(
+			"DealerRow"
+		) as Node3D
+
+		if dealer_row != null:
+			dealer_row.visible = not rush_mode_enabled
+
+	if is_instance_valid(balance_scale):
+		balance_scale.visible = not rush_mode_enabled
+
+	_refresh_rush_sacrifice_ui()
 
 
 func _ensure_tutorial_controller() -> void:
@@ -874,6 +1187,7 @@ func _on_end_turn_pressed() -> void:
 		tutorial_controller.notify_end_turn_pressed()
 
 	interaction_locked = true
+	_refresh_rush_sacrifice_ui()
 
 	hud.set_interaction_enabled(false)
 
@@ -1866,6 +2180,11 @@ func _toggle_keep_card(
 	if card_view == null:
 		return
 
+	# Rush counts every live card directly from its real zone at cleanup.
+	# Keeping cards outside Hand temporarily would make that count ambiguous.
+	if state != null and state.rush_mode_enabled:
+		return
+
 	var card: CardInstance = \
 		card_view.card_instance
 
@@ -1943,7 +2262,14 @@ func _get_drag_required_mana(
 		return maxi(0, card.definition.mana_cost)
 
 	if card.zone == CardZone.Type.BOARD:
-		return MatchEngine.BOARD_MOVE_MANA_COST
+		if engine != null:
+			return engine.get_board_move_mana_cost()
+
+		return (
+			0
+			if state != null and state.rush_mode_enabled
+			else MatchEngine.BOARD_MOVE_MANA_COST
+		)
 
 	return 0
 
@@ -2592,14 +2918,30 @@ func _update_drop_highlight(
 		screen_position
 	)
 
-	if hovered_place == null:
-		return
+	if (
+		hovered_place != null
+		and hovered_place.kind == CardPlace3D.Kind.PLAYER_BOARD
+		and hovered_place.owner_id == local_player_id
+	):
+		if _show_drop_highlight_for_place(card, hovered_place):
+			return
 
-	if hovered_place.kind != CardPlace3D.Kind.PLAYER_BOARD:
-		return
+	var early_place: CardPlace3D = \
+		_get_early_drop_highlight_place(
+			card,
+			screen_position
+		)
 
-	if hovered_place.owner_id != local_player_id:
-		return
+	if early_place != null:
+		_show_drop_highlight_for_place(card, early_place)
+
+
+func _show_drop_highlight_for_place(
+	card: CardInstance,
+	hovered_place: CardPlace3D
+) -> bool:
+	if card == null or hovered_place == null:
+		return false
 
 	var target_slot_id: int = hovered_place.logical_id
 
@@ -2612,7 +2954,7 @@ func _update_drop_highlight(
 		)
 
 	if not SlotID.is_valid(target_slot_id):
-		return
+		return false
 
 	var target_place: CardPlace3D = game_layout.get_board_place(
 		local_player_id,
@@ -2620,7 +2962,14 @@ func _update_drop_highlight(
 	)
 
 	if target_place == null:
-		return
+		return false
+
+	if (
+		tutorial_controller != null
+		and tutorial_controller.is_active()
+		and not tutorial_controller.can_drop(card, target_place)
+	):
+		return false
 
 	var preview_transform: Transform3D = \
 		_get_preview_board_transform(
@@ -2628,7 +2977,8 @@ func _update_drop_highlight(
 			target_slot_id
 		)
 
-	var highlight_kind: CardPlace3D.HighlightKind = 		_get_cover_highlight_kind(
+	var highlight_kind: CardPlace3D.HighlightKind = \
+		_get_cover_highlight_kind(
 			card,
 			target_slot_id
 		)
@@ -2638,6 +2988,90 @@ func _update_drop_highlight(
 		highlight_kind
 	)
 	highlighted_drop_place = target_place
+	return true
+
+
+func _get_early_drop_highlight_place(
+	card: CardInstance,
+	screen_position: Vector2
+) -> CardPlace3D:
+	if card == null or camera_3d == null or game_layout == null:
+		return null
+
+	var closest_place: CardPlace3D
+	var closest_distance: float = INF
+	var checked_target_slots: Dictionary = {}
+
+	for raw_slot_id: int in SlotID.all_slots():
+		var target_slot_id: int = raw_slot_id
+
+		if card.zone == CardZone.Type.HAND:
+			target_slot_id = engine.resolve_play_slot(
+				local_player_id,
+				raw_slot_id
+			)
+
+		if not SlotID.is_valid(target_slot_id):
+			continue
+
+		# Moving a Board card back onto its own source slot is not a useful target.
+		if (
+			card.zone == CardZone.Type.BOARD
+			and target_slot_id == card.current_slot
+		):
+			continue
+
+		if checked_target_slots.has(target_slot_id):
+			continue
+
+		checked_target_slots[target_slot_id] = true
+
+		var target_place: CardPlace3D = game_layout.get_board_place(
+			local_player_id,
+			target_slot_id
+		)
+
+		if target_place == null or target_place.card_anchor == null:
+			continue
+
+		if (
+			tutorial_controller != null
+			and tutorial_controller.is_active()
+			and not tutorial_controller.can_drop(card, target_place)
+		):
+			continue
+
+		var target_world_position: Vector3 = \
+			target_place.card_anchor.global_position
+
+		if camera_3d.is_position_behind(target_world_position):
+			continue
+
+		var target_screen_position: Vector2 = \
+			camera_3d.unproject_position(target_world_position)
+		var route_distance: float = \
+			pointer_start_position.distance_to(
+				target_screen_position
+			)
+
+		if route_distance <= TAP_DRAG_THRESHOLD:
+			continue
+
+		var current_distance: float = screen_position.distance_to(
+			target_screen_position
+		)
+		var route_progress: float = 1.0 - (
+			current_distance / route_distance
+		)
+
+		if route_progress < early_drop_highlight_progress_ratio:
+			continue
+
+		if current_distance < closest_distance:
+			closest_distance = current_distance
+			closest_place = target_place
+
+	return closest_place
 
 
 func _get_place_under_mouse(
@@ -3005,6 +3439,7 @@ func _start_animated_combat() -> void:
 		push_error("Could not begin battle sequence.")
 		interaction_locked = false
 		hud.set_interaction_enabled(true)
+		_refresh_rush_sacrifice_ui()
 		return
 
 	await _sync_visual_state()
@@ -3037,8 +3472,9 @@ func _start_animated_combat() -> void:
 		_finish_game()
 		return
 
-	var retained_cards: Array[CardInstance] = \
-		_take_selected_cards_from_local_hand()
+	var retained_cards: Array[CardInstance] = []
+	if not state.rush_mode_enabled:
+		retained_cards = _take_selected_cards_from_local_hand()
 
 	# یادمان باشد الان چه کارت‌هایی روی زمین Dealer هستند.
 	var previous_dealer_card_ids: Dictionary = \
@@ -3049,6 +3485,12 @@ func _start_animated_combat() -> void:
 
 	engine.finish_combat()
 
+	# Rush penalties are already removed from MatchState, but the OLD hand
+	# views are still on screen. Animate those exact cards before syncing the
+	# newly drawn hand so the sacrifice is readable to the player.
+	if state.rush_mode_enabled:
+		await _play_rush_unused_mana_penalty_visuals()
+
 	_restore_retained_cards_to_local_hand(
 		retained_cards
 	)
@@ -3056,6 +3498,12 @@ func _start_animated_combat() -> void:
 	_return_excess_local_hand_cards_to_draw_pile()
 
 	kept_hand_card_ids.clear()
+
+	if state.is_game_over():
+		await _sync_visual_state()
+		_refresh_battle_scores()
+		_finish_game()
+		return
 
 	if tutorial_controller != null and tutorial_controller.is_active():
 		tutorial_controller.prepare_new_turn_state()
@@ -3082,6 +3530,7 @@ func _start_animated_combat() -> void:
 
 	interaction_locked = false
 	hud.set_interaction_enabled(true)
+	_refresh_rush_sacrifice_ui()
 
 	if tutorial_controller != null and tutorial_controller.is_active():
 		tutorial_controller.notify_combat_finished()
@@ -3954,6 +4403,48 @@ func _start_dealer_hit_reactions(
 
 
 
+func _play_rush_unused_mana_penalty_visuals() -> void:
+	if engine == null or state == null:
+		return
+
+	var longest_duration: float = 0.0
+
+	for player_id: int in [1, 2]:
+		var removed_cards: Array[CardInstance] = \
+			engine.get_last_rush_penalty_cards(player_id)
+
+		for card: CardInstance in removed_cards:
+			if card == null:
+				continue
+
+			var card_view: Card3D = null
+
+			if player_id == local_player_id:
+				card_view = card_views.get(
+					card.instance_id,
+					null
+				) as Card3D
+			else:
+				card_view = opponent_hand_views.get(
+					card.instance_id,
+					null
+				) as Card3D
+
+			if card_view == null or not is_instance_valid(card_view):
+				continue
+
+			# Opponent cards stay face-down. We animate the existing hidden view;
+			# no private card identity is revealed.
+			var duration: float = card_view.play_rush_penalty_remove(
+				rush_penalty_raise_height,
+				rush_penalty_fade_time
+			)
+			longest_duration = maxf(longest_duration, duration)
+
+	if longest_duration > 0.0:
+		await get_tree().create_timer(longest_duration).timeout
+
+
 func _take_selected_cards_from_local_hand() -> Array[CardInstance]:
 	var retained_cards: Array[CardInstance] = []
 
@@ -4122,7 +4613,7 @@ func _play_mustache_card_sequence(
 				continue
 
 			if (
-				rock_card.definition.gesture
+				rock_card.get_gesture()
 				!= CardGesture.Type.ROCK
 			):
 				continue
@@ -4723,10 +5214,16 @@ func _refresh_battle_scores() -> void:
 	if hud == null:
 		return
 
-	hud.set_scores(
-		engine.state.player_one.score,
-		engine.state.player_two.score
-	)
+	if engine.state.rush_mode_enabled:
+		hud.set_scores(
+			engine.state.player_one.get_remaining_card_count(),
+			engine.state.player_two.get_remaining_card_count()
+		)
+	else:
+		hud.set_scores(
+			engine.state.player_one.score,
+			engine.state.player_two.score
+		)
 	_refresh_balance_scale()
 
 func _remove_discarded_card_views() -> void:
@@ -4742,10 +5239,10 @@ func _remove_discarded_card_views() -> void:
 		if card_view.card_instance == null:
 			continue
 
-		if (
-			card_view.card_instance.zone
-			!= CardZone.Type.DISCARD
-		):
+		if card_view.card_instance.zone not in [
+			CardZone.Type.DISCARD,
+			CardZone.Type.REMOVED
+		]:
 			continue
 
 		card_views.erase(instance_id)
@@ -4813,6 +5310,7 @@ func _remove_pile_card_views(
 			card.zone == CardZone.Type.DRAW
 			or card.zone == CardZone.Type.DISCARD
 			or card.zone == CardZone.Type.RESERVE
+			or card.zone == CardZone.Type.REMOVED
 		)
 
 		if not is_in_pile:
@@ -4928,6 +5426,7 @@ func _finish_game() -> void:
 	pending_local_cards.clear()
 	pending_bot_plays.clear()
 
+	var is_draw: bool = state.winner_id == 0
 	var local_won: bool = (
 		state.winner_id
 		== local_player_id
@@ -4937,12 +5436,20 @@ func _finish_game() -> void:
 
 	var opponent_score: int
 
-	if local_player_id == 1:
-		local_score = state.player_one.score
-		opponent_score = state.player_two.score
+	if state.rush_mode_enabled:
+		if local_player_id == 1:
+			local_score = state.player_one.get_remaining_card_count()
+			opponent_score = state.player_two.get_remaining_card_count()
+		else:
+			local_score = state.player_two.get_remaining_card_count()
+			opponent_score = state.player_one.get_remaining_card_count()
 	else:
-		local_score = state.player_two.score
-		opponent_score = state.player_one.score
+		if local_player_id == 1:
+			local_score = state.player_one.score
+			opponent_score = state.player_two.score
+		else:
+			local_score = state.player_two.score
+			opponent_score = state.player_one.score
 
 	var score_difference: int = abs(
 		local_score
@@ -4953,10 +5460,14 @@ func _finish_game() -> void:
 		local_won,
 		local_score,
 		opponent_score,
-		score_difference
+		score_difference,
+		is_draw,
+		state.rush_mode_enabled
 	)
 
-	if local_won:
+	if is_draw:
+		print("RUSH DRAW | both players have no cards")
+	elif local_won:
 		print(
 			"YOU WIN | difference=",
 			score_difference
@@ -4975,6 +5486,12 @@ func _refresh_balance_scale() -> void:
 
 	if state.rules == null:
 		return
+
+	if state.rush_mode_enabled:
+		balance_scale.visible = false
+		return
+
+	balance_scale.visible = true
 
 	balance_scale.set_balance(
 		state.player_one.score,
@@ -5180,7 +5697,7 @@ func _play_collector_vfx_before_combat() -> void:
 
 					# فقط Gesture مربوط به همین Collector.
 					if (
-						target_card.definition.gesture
+						target_card.get_gesture()
 						!= collector_behavior.collected_gesture
 					):
 						continue

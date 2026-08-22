@@ -82,8 +82,8 @@ static func _create_player_vs_dealer_act(
 
 	var outcome: BattleAct.Outcome = \
 		_compare_gestures(
-			player_card.definition.gesture,
-			dealer_card.definition.gesture
+			player_card.get_gesture(),
+			dealer_card.get_gesture()
 		)
 
 	var player_card_is_disabled: bool = \
@@ -151,8 +151,8 @@ static func _create_player_vs_player_act(
 	act.defender_slot_id = player_two_slot_id
 
 	var player_one_outcome: int = _compare_gestures(
-		player_one_card.definition.gesture,
-		player_two_card.definition.gesture
+		player_one_card.get_gesture(),
+		player_two_card.get_gesture()
 	)
 
 	var player_two_outcome: int = _opposite_outcome(
@@ -544,7 +544,7 @@ static func _add_dealer_attacks(
 
 			# اره‌برقی کارت ROCK را نمی‌برد.
 			if (
-				dealer_card.definition.gesture
+				dealer_card.get_gesture()
 				== CardGesture.Type.ROCK
 			):
 				continue
@@ -628,25 +628,26 @@ static func _add_side_lane_sequence(
 		dealer_slot_id
 	]
 
-	# حمله Player 1 به Dealer
-	_add_dealer_attacks(
-		state,
-		sequence,
-		1,
-		player_one_card,
-		player_slot_id,
-		normal_targets
-	)
+	if not state.rush_mode_enabled:
+		# حمله Player 1 به Dealer
+		_add_dealer_attacks(
+			state,
+			sequence,
+			1,
+			player_one_card,
+			player_slot_id,
+			normal_targets
+		)
 
-	# حمله Player 2 به Dealer
-	_add_dealer_attacks(
-		state,
-		sequence,
-		2,
-		player_two_card,
-		player_slot_id,
-		normal_targets
-	)
+		# حمله Player 2 به Dealer
+		_add_dealer_attacks(
+			state,
+			sequence,
+			2,
+			player_two_card,
+			player_slot_id,
+			normal_targets
+		)
 
 	# مبارزه Player 1 و Player 2 با یکدیگر
 	if (
@@ -678,37 +679,38 @@ static func _add_middle_row_sequence(
 		DealerSlotID.Type.MIDDLE_1
 	]
 
-	# حمله کارت‌های وسط Player 1 به Dealer
-	for player_slot_id: int in middle_player_slots:
-		var player_one_card: CardInstance = \
-			state.player_one.board.get_card(
-				player_slot_id
+	if not state.rush_mode_enabled:
+		# حمله کارت‌های وسط Player 1 به Dealer
+		for player_slot_id: int in middle_player_slots:
+			var player_one_card: CardInstance = \
+				state.player_one.board.get_card(
+					player_slot_id
+				)
+
+			_add_dealer_attacks(
+				state,
+				sequence,
+				1,
+				player_one_card,
+				player_slot_id,
+				normal_middle_targets
 			)
 
-		_add_dealer_attacks(
-			state,
-			sequence,
-			1,
-			player_one_card,
-			player_slot_id,
-			normal_middle_targets
-		)
+		# حمله کارت‌های وسط Player 2 به Dealer
+		for player_slot_id: int in middle_player_slots:
+			var player_two_card: CardInstance = \
+				state.player_two.board.get_card(
+					player_slot_id
+				)
 
-	# حمله کارت‌های وسط Player 2 به Dealer
-	for player_slot_id: int in middle_player_slots:
-		var player_two_card: CardInstance = \
-			state.player_two.board.get_card(
-				player_slot_id
+			_add_dealer_attacks(
+				state,
+				sequence,
+				2,
+				player_two_card,
+				player_slot_id,
+				normal_middle_targets
 			)
-
-		_add_dealer_attacks(
-			state,
-			sequence,
-			2,
-			player_two_card,
-			player_slot_id,
-			normal_middle_targets
-		)
 
 	# Clash کارت‌های وسط دو بازیکن
 	for player_one_slot_id: int in middle_player_slots:

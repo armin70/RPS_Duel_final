@@ -8,5 +8,8 @@ enum Type {
 	BOARD,
 	DISCARD,
 	DEALER_BOARD,
-	RESERVE
+	RESERVE,
+	# Rush-only terminal zone. Cards in this zone are not stored in any pile
+	# and can never be shuffled back into the match.
+	REMOVED
 }

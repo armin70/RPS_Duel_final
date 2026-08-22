@@ -11,6 +11,13 @@ var starting_hand_size: int = 5
 var cards_drawn_per_turn: int = 5
 
 
+@export_category("Turn Limits")
+
+# Zero keeps the original unlimited behavior. Rush sets this to two.
+@export_range(0, 10, 1)
+var max_cards_played_per_turn: int = 0
+
+
 @export_category("Scoring")
 
 @export_range(0, 3, 1)

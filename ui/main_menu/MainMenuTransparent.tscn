@@ -80,19 +80,27 @@ grow_vertical = 2
 mouse_filter = 1
 
 [node name="SinglePlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=110001582]
-layout_mode = 1
-anchors_preset = -1
-anchor_right = 0.14500001
-anchor_bottom = 0.15
-offset_left = 897.99994
-offset_top = 402.0
-offset_right = 780.0
-offset_bottom = 390.0
-grow_horizontal = 2
-grow_vertical = 2
-scale = Vector2(1.3553777, 1.3553777)
+layout_mode = 0
+offset_left = 898.0
+offset_top = 409.0
+offset_right = 1146.0
+offset_bottom = 547.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
+flat = true
+
+[node name="RushModeButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=1101805588]
+layout_mode = 0
+offset_left = 1251.0
+offset_top = 409.0
+offset_right = 1547.0
+offset_bottom = 547.0
+tooltip_text = "Rush Mode"
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxEmpty_tl07x")
+theme_override_styles/pressed = SubResource("StyleBoxEmpty_q7ne7")
+theme_override_styles/hover = SubResource("StyleBoxEmpty_ks0fx")
 flat = true
 
 [node name="TwoPlayerButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=1437106841]
@@ -125,10 +133,10 @@ flat = true
 
 [node name="HelpButton" type="Button" parent="MenuRoot/ModeButtons" unique_id=219209116]
 layout_mode = 0
-offset_left = 1071.0
-offset_top = 590.0
-offset_right = 1371.0
-offset_bottom = 790.0
+offset_left = 716.0
+offset_top = 522.0
+offset_right = 930.0
+offset_bottom = 676.0
 theme_override_styles/normal = SubResource("StyleBoxEmpty_tl07x")
 theme_override_styles/pressed = SubResource("StyleBoxEmpty_q7ne7")
 theme_override_styles/hover = SubResource("StyleBoxEmpty_ks0fx")
