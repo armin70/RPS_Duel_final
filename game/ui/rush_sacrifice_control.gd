@@ -118,7 +118,7 @@ func _build_ui() -> void:
 	instruction_label.name = "RushSacrificeInstruction"
 	instruction_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	instruction_label.anchor_left = 0.0
-	instruction_label.anchor_top = 0.42
+	instruction_label.anchor_top = 0.35
 	instruction_label.anchor_right = 0.0
 	instruction_label.anchor_bottom = 0.52
 	instruction_label.offset_left = 18.0
