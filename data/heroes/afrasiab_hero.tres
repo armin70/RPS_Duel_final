@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="HeroDefinition" format=3 uid="uid://d1acfx0a3bst5"]
+
+[ext_resource type="Script" uid="uid://bp5hdyytixkvw" path="res://core/heroes/hero_definition.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://4chldyuon8wy" path="res://art/heroes/afrasiab.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+hero_kind = 2
+active_mana_cost = 2
+active_title = "Gambit"
+active_description = "This turn, each tie gives +3 points; each loss gives -2 points."
+card_id = &"hero_afrasiab"
+display_name = "Afrasiab"
+gesture = 2
+mana_cost = 0
+visual_id = &"hero_afrasiab"
+front_texture = ExtResource("2")
+info_image = ExtResource("2")

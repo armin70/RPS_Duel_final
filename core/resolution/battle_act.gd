@@ -38,4 +38,11 @@ var defender_outcome: Outcome = Outcome.TIE
 var attacker_points: int = 0
 var defender_points: int = 0
 
+# Hero combat metadata is calculated with the BattleAct so presentation order
+# cannot change gameplay. "Landed" includes hits absorbed by Hero shields.
+var attacker_landed_hits: int = 0
+var defender_landed_hits: int = 0
+var attacker_unshielded_hero_hits: int = 0
+var defender_unshielded_hero_hits: int = 0
+
 var resolved: bool = false

@@ -45,6 +45,7 @@ var keep_selected: bool = false
 var displayed_shield_count: int = 0
 var shield_badge_base_scale: Vector3 = Vector3.ONE
 var card_material: StandardMaterial3D
+var hero_status_label: Label3D
 
 var _inspect_press_active: bool = false
 var _inspect_press_position: Vector2 = Vector2.ZERO
@@ -60,7 +61,49 @@ func _ready() -> void:
 	input_ray_pickable = true
 
 	_create_card_material()
+	_build_hero_status_label()
 	_refresh_gesture_override_label()
+
+
+func _build_hero_status_label() -> void:
+	if hero_status_label != null:
+		return
+	hero_status_label = Label3D.new()
+	hero_status_label.name = "HeroStatusLabel"
+	hero_status_label.position = Vector3(0.0, 0.12, -0.28)
+	hero_status_label.font_size = 11
+	hero_status_label.outline_size = 5
+	hero_status_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hero_status_label.no_depth_test = true
+	hero_status_label.visible = false
+	add_child(hero_status_label)
+
+
+func refresh_hero_status(turn_number: int) -> void:
+	if hero_status_label == null:
+		_build_hero_status_label()
+	if card_instance == null or not card_instance.is_hero():
+		hero_status_label.visible = false
+		return
+	var parts: Array[String] = []
+	parts.append(
+		"HP %d/%d" % [
+			maxi(0, card_instance.hero_health),
+			maxi(1, card_instance.hero_max_health)
+		]
+	)
+	if card_instance.shield_count > 0:
+		parts.append("SHIELD %d" % card_instance.shield_count)
+	if card_instance.is_hero_furious(turn_number):
+		parts.append("FURY x2")
+	if card_instance.is_hero_sleeping(turn_number):
+		parts.append("SLEEP")
+	if card_instance.is_hero_rooted(turn_number):
+		parts.append("ROOT")
+	if card_instance.is_hero_afrasiab_active(turn_number):
+		parts.append("GAMBIT")
+	hero_status_label.text = " | ".join(parts)
+	hero_status_label.visible = not parts.is_empty()
 
 
 func _create_card_material() -> void:
@@ -135,10 +178,15 @@ func _refresh_gesture_override_label() -> void:
 	if card_name == null:
 		return
 
+	if card_instance == null or not is_face_up:
+		card_name.visible = false
+		return
+
+	# Normal cards only show this label when Rush changed their type. Heroes
+	# always show their built-in R/P/S type so their matchup is readable.
 	if (
-		card_instance == null
-		or not is_face_up
-		or not card_instance.has_gesture_override()
+		not card_instance.has_gesture_override()
+		and not card_instance.is_hero()
 	):
 		card_name.visible = false
 		return

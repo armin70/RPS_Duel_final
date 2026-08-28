@@ -70,21 +70,17 @@ static func _create_player_vs_dealer_act(
 	var act := BattleAct.new()
 
 	act.type = BattleAct.Type.PLAYER_VS_DEALER
-
 	act.attacker = player_card
 	act.defender = dealer_card
-
 	act.attacker_owner_id = player_id
 	act.defender_owner_id = 0
-
 	act.attacker_slot_id = player_slot_id
 	act.dealer_slot_id = dealer_slot_id
 
-	var outcome: BattleAct.Outcome = \
-		_compare_gestures(
-			player_card.get_gesture(),
-			dealer_card.get_gesture()
-		)
+	var outcome: BattleAct.Outcome = _compare_gestures(
+		player_card.get_gesture(),
+		dealer_card.get_gesture()
+	)
 
 	var player_card_is_disabled: bool = \
 		DisableGestureBehavior.is_card_disabled(
@@ -94,12 +90,16 @@ static func _create_player_vs_dealer_act(
 			player_card
 		)
 
-	# کارت Disableشده اجازه Win ندارد.
+	if player_card_is_disabled and outcome == BattleAct.Outcome.WIN:
+		outcome = BattleAct.Outcome.TIE
+
+	# Rostam sleeps on the turn after Fury: a would-be win becomes a tie.
 	if (
-		player_card_is_disabled
-		and outcome == BattleAct.Outcome.WIN
+		outcome == BattleAct.Outcome.WIN
+		and player_card.is_hero_sleeping(state.turn_number)
 	):
 		outcome = BattleAct.Outcome.TIE
+
 	outcome = _apply_behavior_to_outcome(
 		state,
 		player_card,
@@ -107,24 +107,29 @@ static func _create_player_vs_dealer_act(
 		outcome
 	)
 
-	# Behavior ویژه نباید قانون Disabler را دور بزند.
-	if (
-		player_card_is_disabled
-		and outcome == BattleAct.Outcome.WIN
-	):
+	if player_card_is_disabled and outcome == BattleAct.Outcome.WIN:
 		outcome = BattleAct.Outcome.TIE
 
-	# Shield روی نتیجه نهایی اعمال می‌شود.
-	outcome = _apply_shield_to_outcome(
-		player_card,
-		outcome
-	)
+	if outcome == BattleAct.Outcome.WIN:
+		var hit_count: int = _get_winning_hit_count(state, player_card)
+		act.attacker_landed_hits = hit_count
+		act.attacker_points = _points_for_outcome(state, outcome) * hit_count
+	elif outcome == BattleAct.Outcome.LOSS:
+		# Dealer hits consume Hero shields too, exactly like other incoming hits.
+		var hit_result: Dictionary = _apply_incoming_hits(
+			player_card,
+			1,
+			outcome,
+			false
+		)
+		outcome = int(hit_result.get("outcome", outcome))
+		act.defender_landed_hits = int(hit_result.get("landed_hits", 0))
 
 	act.attacker_outcome = outcome
-
-	act.attacker_points = _points_for_outcome(
-		state,
-		outcome
+	if outcome != BattleAct.Outcome.WIN:
+		act.attacker_points = _points_for_outcome(state, outcome)
+	act.attacker_points = _apply_afrasiab_active_score(
+		state, player_card, outcome, act.attacker_points
 	)
 
 	return act
@@ -138,15 +143,11 @@ static func _create_player_vs_player_act(
 	player_two_slot_id: int
 ) -> BattleAct:
 	var act := BattleAct.new()
-
 	act.type = BattleAct.Type.PLAYER_VS_PLAYER
-
 	act.attacker = player_one_card
 	act.defender = player_two_card
-
 	act.attacker_owner_id = 1
 	act.defender_owner_id = 2
-
 	act.attacker_slot_id = player_one_slot_id
 	act.defender_slot_id = player_two_slot_id
 
@@ -154,130 +155,118 @@ static func _create_player_vs_player_act(
 		player_one_card.get_gesture(),
 		player_two_card.get_gesture()
 	)
+	var player_two_outcome: int = _opposite_outcome(player_one_outcome)
 
-	var player_two_outcome: int = _opposite_outcome(
-		player_one_outcome
-	)
 
 	var player_one_is_disabled: bool = \
 		DisableGestureBehavior.is_card_disabled(
-			state,
-			1,
-			player_one_slot_id,
-			player_one_card
+			state, 1, player_one_slot_id, player_one_card
 		)
-
 	var player_two_is_disabled: bool = \
 		DisableGestureBehavior.is_card_disabled(
-			state,
-			2,
-			player_two_slot_id,
-			player_two_card
+			state, 2, player_two_slot_id, player_two_card
 		)
 
-
-	# اعمال Disabler روی Player 1
-	if (
-		player_one_is_disabled
-		and player_one_outcome
-		== BattleAct.Outcome.WIN
-	):
+	if player_one_is_disabled and player_one_outcome == BattleAct.Outcome.WIN:
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+	if player_two_is_disabled and player_two_outcome == BattleAct.Outcome.WIN:
 		player_one_outcome = BattleAct.Outcome.TIE
 		player_two_outcome = BattleAct.Outcome.TIE
 
-
-	# اعمال Disabler روی Player 2
-	if (
-		player_two_is_disabled
-		and player_two_outcome
-		== BattleAct.Outcome.WIN
-	):
-		player_one_outcome = BattleAct.Outcome.TIE
-		player_two_outcome = BattleAct.Outcome.TIE
-
-	# Behavior کارت Player 1
-	var modified_player_one_outcome: int = \
-		_apply_behavior_to_outcome(
-			state,
-			player_one_card,
-			player_two_card,
-			player_one_outcome
-		)
-
+	var modified_player_one_outcome: int = _apply_behavior_to_outcome(
+		state,
+		player_one_card,
+		player_two_card,
+		player_one_outcome
+	)
 	if modified_player_one_outcome != player_one_outcome:
 		player_one_outcome = modified_player_one_outcome
-		player_two_outcome = _opposite_outcome(
-			player_one_outcome
-		)
+		player_two_outcome = _opposite_outcome(player_one_outcome)
 
-	# Behavior کارت Player 2
-	var modified_player_two_outcome: int = \
-		_apply_behavior_to_outcome(
-			state,
-			player_two_card,
-			player_one_card,
-			player_two_outcome
-		)
-
+	var modified_player_two_outcome: int = _apply_behavior_to_outcome(
+		state,
+		player_two_card,
+		player_one_card,
+		player_two_outcome
+	)
 	if modified_player_two_outcome != player_two_outcome:
 		player_two_outcome = modified_player_two_outcome
-		player_one_outcome = _opposite_outcome(
-			player_two_outcome
-		)
+		player_one_outcome = _opposite_outcome(player_two_outcome)
 
-	# بررسی نهایی Disabler بعد از تمام Behaviorها.
+	if player_one_is_disabled and player_one_outcome == BattleAct.Outcome.WIN:
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+	if player_two_is_disabled and player_two_outcome == BattleAct.Outcome.WIN:
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+
+	# Rostam sleep is checked after normal card behaviors/Disable but before
+	# shields are consumed. A sleeping Rostam can still lose; only a win is tied.
 	if (
-		player_one_is_disabled
-		and player_one_outcome
-		== BattleAct.Outcome.WIN
+		player_one_outcome == BattleAct.Outcome.WIN
+		and player_one_card.is_hero_sleeping(state.turn_number)
+	):
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+	if (
+		player_two_outcome == BattleAct.Outcome.WIN
+		and player_two_card.is_hero_sleeping(state.turn_number)
 	):
 		player_one_outcome = BattleAct.Outcome.TIE
 		player_two_outcome = BattleAct.Outcome.TIE
 
-	if (
-		player_two_is_disabled
-		and player_two_outcome
-		== BattleAct.Outcome.WIN
-	):
-		player_one_outcome = BattleAct.Outcome.TIE
-		player_two_outcome = BattleAct.Outcome.TIE
-
-	# Shield کارت Player 1
-	var player_one_after_shield: int = \
-		_apply_shield_to_outcome(
-			player_one_card,
-			player_one_outcome
-		)
-
-	if player_one_after_shield != player_one_outcome:
-		player_one_outcome = BattleAct.Outcome.TIE
-		player_two_outcome = BattleAct.Outcome.TIE
-
-
-	# Shield کارت Player 2
-	var player_two_after_shield: int = \
-		_apply_shield_to_outcome(
+	# A Fury winner lands two attacks. Shields absorb hits one-by-one; any hit
+	# that remains after the shield reaches zero is an exposed Hero hit.
+	if player_one_outcome == BattleAct.Outcome.WIN:
+		var player_one_hit_count: int = _get_winning_hit_count(state, player_one_card)
+		var player_one_hit_result: Dictionary = _apply_incoming_hits(
 			player_two_card,
-			player_two_outcome
+			player_one_hit_count,
+			player_two_outcome,
+			player_one_card.is_hero()
 		)
+		act.attacker_landed_hits = int(player_one_hit_result.get("landed_hits", 0))
+		act.attacker_unshielded_hero_hits = int(
+			player_one_hit_result.get("unshielded_hero_hits", 0)
+		)
+		player_two_outcome = int(player_one_hit_result.get("outcome", player_two_outcome))
+		player_one_outcome = _opposite_outcome(player_two_outcome)
 
-	if player_two_after_shield != player_two_outcome:
-		player_one_outcome = BattleAct.Outcome.TIE
-		player_two_outcome = BattleAct.Outcome.TIE
-
-
+	elif player_two_outcome == BattleAct.Outcome.WIN:
+		var player_two_hit_count: int = _get_winning_hit_count(state, player_two_card)
+		var player_two_hit_result: Dictionary = _apply_incoming_hits(
+			player_one_card,
+			player_two_hit_count,
+			player_one_outcome,
+			player_two_card.is_hero()
+		)
+		act.defender_landed_hits = int(player_two_hit_result.get("landed_hits", 0))
+		act.defender_unshielded_hero_hits = int(
+			player_two_hit_result.get("unshielded_hero_hits", 0)
+		)
+		player_one_outcome = int(player_two_hit_result.get("outcome", player_one_outcome))
+		player_two_outcome = _opposite_outcome(player_one_outcome)
 
 	act.attacker_outcome = player_one_outcome
 	act.defender_outcome = player_two_outcome
-
-	act.attacker_points = _points_for_outcome(
+	act.attacker_points = _hero_adjusted_points(
 		state,
-		player_one_outcome
+		player_one_outcome,
+		act.attacker_landed_hits,
+		act.attacker_unshielded_hero_hits
 	)
-
-	act.defender_points = _points_for_outcome(
+	act.defender_points = _hero_adjusted_points(
 		state,
-		player_two_outcome
+		player_two_outcome,
+		act.defender_landed_hits,
+		act.defender_unshielded_hero_hits
+	)
+	act.attacker_points = _apply_afrasiab_active_score(
+		state, player_one_card, player_one_outcome, act.attacker_points
+	)
+	act.defender_points = _apply_afrasiab_active_score(
+		state, player_two_card, player_two_outcome, act.defender_points
 	)
 
 	return act
@@ -741,35 +730,106 @@ static func _add_middle_row_sequence(
 				)
 			)
 			
-static func _apply_shield_to_outcome(
-	card: CardInstance,
-	current_outcome: int
+static func _get_winning_hit_count(
+	state: MatchState,
+	winner: CardInstance
 ) -> int:
-	if card == null:
-		return current_outcome
+	if state == null or winner == null:
+		return 1
+	if not winner.is_hero_furious(state.turn_number):
+		return 1
+	var hero_def: HeroDefinition = winner.get_hero_definition()
+	if hero_def != null and hero_def.hero_kind == HeroDefinition.HeroKind.ROSTAM:
+		return 2
+	return 1
 
-	# Shield فقط LOSS را متوقف می‌کند.
-	if current_outcome != BattleAct.Outcome.LOSS:
-		return current_outcome
 
-	if card.shield_count <= 0:
-		return current_outcome
+static func _apply_incoming_hits(
+	loser: CardInstance,
+	hit_count: int,
+	current_outcome: int,
+	source_is_hero: bool = false
+) -> Dictionary:
+	var result: Dictionary = {
+		"outcome": current_outcome,
+		"landed_hits": 0,
+		"unshielded_hero_hits": 0,
+		"hero_health_damage": 0
+	}
+	if loser == null or current_outcome != BattleAct.Outcome.LOSS:
+		return result
 
-	card.shield_count -= 1
+	hit_count = maxi(1, hit_count)
+	result["landed_hits"] = hit_count
 
-	var card_name: String = "Unknown"
+	# A temporary shield can be burned by ANY incoming loss: normal card,
+	# Dealer, Hero or Special. Only a Hero-vs-Hero unshielded hit can reduce HP.
+	var shield_hits: int = mini(loser.shield_count, hit_count)
+	if shield_hits > 0:
+		loser.shield_count -= shield_hits
+		print(
+			"SHIELD USED | card=",
+			loser.definition.display_name if loser.definition != null else "Unknown",
+			" | hits=",
+			shield_hits,
+			" | shields_left=",
+			loser.shield_count
+		)
 
-	if card.definition != null:
-		card_name = card.definition.display_name
+	var unshielded_hits: int = hit_count - shield_hits
+	if loser.is_hero():
+		result["unshielded_hero_hits"] = unshielded_hits
+		# Health itself is applied when this BattleAct resolves, after its attack
+		# animation. source_is_hero only marks whether these hits are allowed to
+		# become real Hero HP damage.
+		if source_is_hero and unshielded_hits > 0:
+			result["hero_health_damage"] = unshielded_hits
 
-	print(
-		"SHIELD USED | card=",
-		card_name,
-		" | shields_left=",
-		card.shield_count
-	)
+	# If every incoming hit was absorbed, the clash is neutralized. Otherwise
+	# it remains a real loss for scoring/energy even when the attacker is a
+	# normal card that cannot directly damage Hero HP.
+	if unshielded_hits <= 0:
+		result["outcome"] = BattleAct.Outcome.TIE
+	else:
+		result["outcome"] = BattleAct.Outcome.LOSS
+	return result
 
-	return BattleAct.Outcome.TIE
+
+static func _hero_adjusted_points(
+	state: MatchState,
+	outcome: int,
+	landed_hits: int,
+	unshielded_hero_hits: int
+) -> int:
+	if unshielded_hero_hits > 0 and outcome == BattleAct.Outcome.WIN:
+		# Defeating an exposed Hero is always worth 15, even if Fury lands
+		# multiple physical hits in the same clash.
+		return 15
+	var points: int = _points_for_outcome(state, outcome)
+	if outcome == BattleAct.Outcome.WIN and landed_hits > 1:
+		points *= landed_hits
+	return points
+
+
+static func _apply_afrasiab_active_score(
+	state: MatchState,
+	card: CardInstance,
+	outcome: int,
+	points: int
+) -> int:
+	if state == null or card == null:
+		return points
+	if not card.is_hero_afrasiab_active(state.turn_number):
+		return points
+	var hero_def: HeroDefinition = card.get_hero_definition()
+	if hero_def == null or hero_def.hero_kind != HeroDefinition.HeroKind.AFRASIAB:
+		return points
+	if outcome == BattleAct.Outcome.TIE:
+		return 3
+	if outcome == BattleAct.Outcome.LOSS:
+		return -2
+	return points
+
 
 static func _apply_behavior_to_outcome(
 	state: MatchState,
@@ -787,6 +847,12 @@ static func _apply_behavior_to_outcome(
 		source_card.definition.behavior
 
 	if behavior == null:
+		return current_outcome
+
+	# DefenseBehavior initializes its shield at Start Combat. Actual shield
+	# consumption is centralized in _apply_incoming_hits so Fury can consume
+	# two charges correctly instead of one charge cancelling both attacks.
+	if behavior is DefenseBehavior:
 		return current_outcome
 
 	return behavior.modify_battle_outcome(

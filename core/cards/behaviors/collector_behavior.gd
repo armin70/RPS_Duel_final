@@ -59,6 +59,10 @@ func on_start_combat(
 		if target_card.definition == null:
 			continue
 
+		# Heroها از افکت کارت‌های معمولی مصون‌اند.
+		if target_card.is_hero():
+			continue
+
 		# خود Collector جمع نمی‌شود.
 		if target_card == source_card:
 			continue
@@ -71,7 +75,7 @@ func on_start_combat(
 			continue
 
 		if (
-			target_card.get_gesture()
+			target_card.definition.gesture
 			!= collected_gesture
 		):
 			continue

@@ -2,6 +2,9 @@ class_name MatchEngine
 extends RefCounted
 
 const BOARD_MOVE_MANA_COST: int = 1
+const ENERGY_PER_BAR: int = 15
+const MAX_ENERGY_BARS: int = 4
+const MAX_ENERGY_POINTS: int = ENERGY_PER_BAR * MAX_ENERGY_BARS
 
 
 func get_board_move_mana_cost() -> int:
@@ -9,6 +12,27 @@ func get_board_move_mana_cost() -> int:
 		return 0
 
 	return BOARD_MOVE_MANA_COST
+
+
+func get_board_move_mana_cost_for_card(
+	player_id: int,
+	card: CardInstance
+) -> int:
+	return get_board_move_mana_cost()
+
+
+func _get_hero_move_limit(card: CardInstance) -> int:
+	if card == null or not card.is_hero():
+		return 0
+	return 1
+
+
+func _can_hero_move_this_turn(card: CardInstance) -> bool:
+	if card == null or not card.is_hero():
+		return false
+	if state != null and card.is_hero_rooted(state.turn_number):
+		return false
+	return card.hero_moves_this_turn < _get_hero_move_limit(card)
 var state: MatchState
 var card_factory: CardFactory = CardFactory.new()
 var active_battle_sequence: BattleSequence
@@ -100,8 +124,9 @@ func _run_dealer_enter_behaviors() -> void:
 			dealer_slot_id
 		)
 
-	# Dealer effects may empty a Front slot. A card directly behind it
-	# advances for free before the next placement phase starts.
+	# Dealer effects may remove a temporary Hero protector. Restore the Hero
+	# before applying normal front-row promotion.
+	_restore_missing_guarded_heroes()
 	_normalize_all_player_front_rows()
 
 
@@ -121,6 +146,258 @@ func _setup_player(
 		player,
 		state.rules.starting_hand_size
 	)
+
+# =========================================================
+# Hero system
+# =========================================================
+
+func can_place_hero_at_slot(player_id: int, slot_id: int) -> bool:
+	if state == null or not SlotID.is_valid(slot_id):
+		return false
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or player.hero != null:
+		return false
+	if not player.board.is_slot_empty(slot_id):
+		return false
+	# Hero setup now follows the same front/back placement rule as normal cards.
+	return _can_play_in_row_order(player, slot_id)
+
+
+func place_hero(
+	player_id: int,
+	hero_definition: HeroDefinition,
+	slot_id: int
+) -> CardInstance:
+	if state == null or hero_definition == null:
+		return null
+	if not can_place_hero_at_slot(player_id, slot_id):
+		return null
+
+	var player: PlayerState = state.get_player(player_id)
+
+	var hero: CardInstance = card_factory.create_card(
+		hero_definition,
+		player_id
+	)
+	hero.zone = CardZone.Type.BOARD
+	# Hero setup now follows normal Cover timing too: it cannot be covered on
+	# the same turn it first enters the board.
+	hero.turn_played = state.turn_number
+	hero.hero_revealed = false
+	hero.hero_max_health = maxi(1, hero_definition.starting_health)
+	hero.hero_health = hero.hero_max_health
+	hero.shields_initialized = true
+	hero.shield_count = maxi(0, hero_definition.starting_shields)
+
+	if not player.board.place_card(slot_id, hero):
+		return null
+
+	player.hero = hero
+	print(
+		"HERO PLACED | player=", player_id,
+		" | hero=", hero_definition.display_name,
+		" | slot=", slot_id,
+		" | hp=", hero.hero_health, "/", hero.hero_max_health,
+		" | shields=", hero.shield_count
+	)
+	return hero
+
+
+func reveal_all_heroes() -> bool:
+	if state == null:
+		return false
+
+	var changed: bool = false
+	for player_id: int in [1, 2]:
+		var player: PlayerState = state.get_player(player_id)
+		if player == null or player.hero == null:
+			continue
+		if player.hero.hero_revealed:
+			continue
+		player.hero.hero_revealed = true
+		changed = true
+
+	return changed
+
+
+func are_heroes_revealed() -> bool:
+	if state == null:
+		return false
+
+	var found_hero: bool = false
+	for player_id: int in [1, 2]:
+		var player: PlayerState = state.get_player(player_id)
+		if player == null or player.hero == null:
+			continue
+		found_hero = true
+		if not player.hero.hero_revealed:
+			return false
+
+	return found_hero
+
+
+func can_activate_hero_active(player_id: int) -> bool:
+	if state == null or state.phase != MatchPhase.Type.MAIN:
+		return false
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or player.is_ready or player.hero == null:
+		return false
+	var hero: CardInstance = player.hero
+	if hero.zone != CardZone.Type.BOARD:
+		return false
+	if not SlotID.is_valid(hero.current_slot):
+		return false
+	if player.board.get_card(hero.current_slot) != hero:
+		return false
+	if not hero.hero_revealed:
+		return false
+	if hero.hero_active_used_turn == state.turn_number:
+		return false
+	var hero_def: HeroDefinition = hero.get_hero_definition()
+	if hero_def == null:
+		return false
+	# Tahmineh's shield Active Roots her for the whole turn. If she already
+	# moved this turn, the Active is no longer legal.
+	if (
+		hero_def.hero_kind == HeroDefinition.HeroKind.TAHMINEH
+		and hero.hero_moves_this_turn > 0
+	):
+		return false
+	return player.current_mana >= hero_def.active_mana_cost
+
+
+func activate_hero_active(player_id: int) -> bool:
+	if not can_activate_hero_active(player_id):
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+	var hero: CardInstance = player.hero
+	var hero_def: HeroDefinition = hero.get_hero_definition()
+	player.current_mana -= hero_def.active_mana_cost
+	hero.hero_active_used_turn = state.turn_number
+
+	match hero_def.hero_kind:
+		HeroDefinition.HeroKind.ROSTAM:
+			hero.hero_fury_turn = state.turn_number
+			hero.hero_sleep_turn = state.turn_number + 1
+		HeroDefinition.HeroKind.TAHMINEH:
+			hero.shield_count += 1
+			hero.hero_root_turn = state.turn_number
+		HeroDefinition.HeroKind.AFRASIAB:
+			hero.hero_afrasiab_active_turn = state.turn_number
+
+	print(
+		"HERO ACTIVE | player=", player_id,
+		" | hero=", hero_def.display_name,
+		" | active=", hero_def.active_title,
+		" | mana_left=", player.current_mana
+	)
+	return true
+
+
+func _queue_tahmineh_free_paper(
+	_player_id: int,
+	_hero: CardInstance
+) -> void:
+	# Hero passives are currently disabled.
+	return
+
+
+func _apply_hero_battle_metadata(_act: BattleAct) -> void:
+	# Hero passives are currently disabled. Active scoring is resolved directly
+	# in BattleResolver so presentation order cannot change the result.
+	return
+
+
+func _is_guard_card_for_hero(
+	player: PlayerState,
+	card: CardInstance
+) -> bool:
+	if player == null or card == null or player.hero == null:
+		return false
+	var hero: CardInstance = player.hero
+	return (
+		hero.is_hero_guarded()
+		and hero.hero_guard_card_instance_id == card.instance_id
+		and hero.current_slot == card.current_slot
+	)
+
+
+func _restore_guarded_hero_if_protector_missing(
+	player: PlayerState
+) -> bool:
+	if player == null or player.hero == null:
+		return false
+	var hero: CardInstance = player.hero
+	if not hero.is_hero_guarded():
+		return false
+	var slot_id: int = hero.current_slot
+	if not SlotID.is_valid(slot_id):
+		hero.clear_hero_guard()
+		return false
+	var protector: CardInstance = player.board.get_card(slot_id)
+	if (
+		protector != null
+		and protector.instance_id == hero.hero_guard_card_instance_id
+	):
+		return false
+
+	# The guard card was moved/discarded/destroyed by another rule. As soon as
+	# the slot becomes free the persistent Hero resurfaces there.
+	if player.board.is_slot_empty(slot_id):
+		hero.clear_hero_guard()
+		hero.turn_played = state.turn_number
+		player.board.place_card(slot_id, hero)
+		print("HERO GUARD BROKEN | hero=", hero.definition.display_name)
+		return true
+
+	return false
+
+
+func _restore_missing_guarded_heroes() -> void:
+	if state == null:
+		return
+	_restore_guarded_hero_if_protector_missing(state.player_one)
+	_restore_guarded_hero_if_protector_missing(state.player_two)
+
+
+func _expire_hero_guards() -> void:
+	if state == null:
+		return
+
+	for player_id: int in [1, 2]:
+		var player: PlayerState = state.get_player(player_id)
+		if player == null or player.hero == null:
+			continue
+		var hero: CardInstance = player.hero
+		if not hero.is_hero_guarded():
+			continue
+		if hero.hero_guard_turn != state.turn_number:
+			continue
+
+		var slot_id: int = hero.current_slot
+		if not SlotID.is_valid(slot_id):
+			hero.clear_hero_guard()
+			continue
+
+		var protector: CardInstance = player.board.get_card(slot_id)
+		if (
+			protector != null
+			and protector.instance_id == hero.hero_guard_card_instance_id
+		):
+			CardMover.board_to_reserve(player, slot_id)
+
+		if player.board.is_slot_empty(slot_id):
+			hero.clear_hero_guard()
+			hero.turn_played = state.turn_number
+			player.board.place_card(slot_id, hero)
+			print(
+				"HERO GUARD EXPIRED | hero=",
+				hero.definition.display_name,
+				" | slot=",
+				slot_id
+			)
+
 
 # =========================================================
 # Front-first board placement
@@ -205,7 +482,6 @@ func _promote_back_to_front(
 
 	if card == null:
 		return false
-
 	var moved: bool = player.board.move_card(
 		back_slot_id,
 		front_slot_id
@@ -307,6 +583,8 @@ func can_rush_transform_card(
 
 	if target_card.zone != CardZone.Type.BOARD:
 		return false
+	if target_card.is_hero():
+		return false
 
 	var current_gesture: CardGesture.Type = target_card.get_gesture()
 	if current_gesture not in [
@@ -336,7 +614,7 @@ func get_rush_sacrifice_candidates(
 		return result
 
 	for card: CardInstance in player.board.get_occupied_cards():
-		if card == null or card == target_card:
+		if card == null or card == target_card or card.is_hero():
 			continue
 		result.append(card)
 
@@ -414,73 +692,50 @@ func can_cover_card(
 	card: CardInstance,
 	target_slot_id: int
 ) -> bool:
-	if state == null:
+	if state == null or state.phase != MatchPhase.Type.MAIN:
 		return false
-
-	if state.phase != MatchPhase.Type.MAIN:
-		return false
-
 	if not SlotID.is_valid(target_slot_id):
 		return false
 
-	var player: PlayerState = state.get_player(
-		player_id
-	)
-
-	if player == null or card == null:
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or card == null or player.is_ready:
+		return false
+	if card.definition == null or card.owner_id != player_id:
 		return false
 
-	if player.is_ready:
+	var target_card: CardInstance = player.board.get_card(target_slot_id)
+	if target_card == null or target_card == card:
 		return false
-
-	if card.definition == null:
-		return false
-
-	if card.owner_id != player_id:
-		return false
-
-	var target_card: CardInstance = player.board.get_card(
-		target_slot_id
-	)
-
-	if target_card == null:
-		return false
-
-	if target_card == card:
-		return false
-
 	if target_card.definition == null:
 		return false
 
-	var turns_since_played: int = (
-		state.turn_number
-		- target_card.turn_played
-	)
-
+	var turns_since_played: int = state.turn_number - target_card.turn_played
 	if turns_since_played < 1:
 		return false
 
-	if not CardGesture.can_cover(
-		card.get_gesture(),
-		target_card.get_gesture()
-	):
+	if not CardGesture.can_cover(card.get_gesture(), target_card.get_gesture()):
 		return false
 
 	if card.zone == CardZone.Type.HAND:
-		return _can_play_in_row_order(
-			player,
-			target_slot_id
-		)
+		# Heroes are persistent setup pieces and never enter Hand.
+		if card.is_hero():
+			return false
+		return _can_play_in_row_order(player, target_slot_id)
 
 	if card.zone == CardZone.Type.BOARD:
 		if not SlotID.is_valid(card.current_slot):
 			return false
-
-		if (
-			player.board_move_used_turn
-			== state.turn_number
-		):
+		if player.board.get_card(card.current_slot) != card:
 			return false
+
+		if card.is_hero():
+			if not card.hero_revealed:
+				return false
+			if not _can_hero_move_this_turn(card):
+				return false
+		else:
+			if player.board_move_used_turn == state.turn_number:
+				return false
 
 		return _can_move_in_row_order(
 			player,
@@ -496,136 +751,74 @@ func play_card(
 	card: CardInstance,
 	slot_id: int
 ) -> bool:
-	if state == null:
+	if state == null or state.phase != MatchPhase.Type.MAIN:
 		return false
 
-	if state.phase != MatchPhase.Type.MAIN:
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or card == null or player.is_ready:
+		return false
+	if card.definition == null or card.owner_id != player_id:
+		return false
+	if not player.hand.has(card) or not SlotID.is_valid(slot_id):
 		return false
 
-	var player: PlayerState = state.get_player(
-		player_id
-	)
-
-	if player == null or card == null:
-		return false
-
-	if player.is_ready:
-		return false
-
-	if card.definition == null:
-		return false
-
-	if card.owner_id != player_id:
-		return false
-
-	if not player.hand.has(card):
-		return false
-
+	slot_id = resolve_play_slot(player_id, slot_id)
 	if not SlotID.is_valid(slot_id):
 		return false
-
-	# Empty destinations are front-first. If the player releases a card over
-	# Back while that column still needs a Front card, it snaps to Front.
-	slot_id = resolve_play_slot(
-		player_id,
-		slot_id
-	)
-
-	if not SlotID.is_valid(slot_id):
+	if not _can_play_in_row_order(player, slot_id):
 		return false
 
-	# برای قرارگرفتن در ردیف عقب،
-	# کارت جلوی همان ستون باید وجود داشته باشد.
-	if not _can_play_in_row_order(
-		player,
-		slot_id
-	):
-		print(
-			"PLAY FAILED | matching front slot "
-			+ "must be occupied first"
-		)
-		return false
-
-	var mana_cost: int = card.definition.mana_cost
-
+	var mana_cost: int = card.get_mana_cost()
 	if player.current_mana < mana_cost:
 		return false
 
-	var replaced_card: CardInstance = \
-		player.board.get_card(slot_id)
-	var board_before: Dictionary = \
-		_snapshot_board_cards(player)
-	# Slot اشغال است؛ باید شرایط Cover بررسی شود.
+	var replaced_card: CardInstance = player.board.get_card(slot_id)
+	var board_before: Dictionary = _snapshot_board_cards(player)
+
 	if replaced_card != null:
-		if replaced_card.definition == null:
+		if not can_cover_card(player_id, card, slot_id):
 			return false
 
-		# کارت باید حداقل یک Turn از زمان چیده‌شدنش گذشته باشد.
-# Turn ورود کارت و اولین Turn بعد از آن قابل Cover نیست.
-		var turns_since_played: int = (
-			state.turn_number
-			- replaced_card.turn_played
-		)
+		# Normal card -> Hero: the Hero may not be discarded. Instead it absorbs
+		# the covering card's current R/P/S type. The covering normal card pays
+		# the Cover cost by going to Reserve and the Hero remains in its slot.
+		if replaced_card.is_hero():
+			player.hand.erase(card)
+			card.zone = CardZone.Type.RESERVE
+			card.current_slot = CardInstance.NO_SLOT
+			player.reserve_pile.append(card)
+			player.current_mana -= mana_cost
 
-		if turns_since_played < 1:
+			replaced_card.set_gesture_override(card.get_gesture())
+			# Treat the transformed Hero as the newly-covered board card. This keeps
+			# the normal one-turn Cover cooldown intact and prevents chain-covering
+			# the same Hero repeatedly in one turn.
+			replaced_card.turn_played = state.turn_number
+
 			print(
-				"COVER FAILED | target card must survive "
-				+ "one full turn first"
+				"HERO TYPE COVER | hero=",
+				replaced_card.definition.display_name,
+				" | new_type=",
+				CardGesture.Type.keys()[replaced_card.get_gesture()],
+				" | consumed=",
+				card.definition.display_name
 			)
-			return false
+			return true
 
-		var new_gesture: CardGesture.Type = \
-			card.get_gesture()
-
-		var old_gesture: CardGesture.Type = \
-			replaced_card.get_gesture()
-
-		if not CardGesture.can_cover(
-			new_gesture,
-			old_gesture
-		):
-			print(
-				"COVER FAILED | ",
-				CardGesture.Type.keys()[new_gesture],
-				" cannot cover ",
-				CardGesture.Type.keys()[old_gesture]
-			)
-			return false
-
-	# اگر Slot اشغال بود، ابتدا کارت قدیمی Discard می‌شود.
-	if replaced_card != null:
-		var discarded_card: CardInstance = \
-			CardMover.board_to_discard(
-				player,
-				slot_id
-			)
-		if discarded_card == null:
-			push_error(
-				"Cover failed: old card could not be discarded."
-			)
-			return false
-
-		print(
-			"CARD COVERED | old=",
-			discarded_card.definition.display_name,
-			" | new=",
-			card.definition.display_name,
-			" | slot=",
+		var discarded_card: CardInstance = CardMover.board_to_discard(
+			player,
 			slot_id
 		)
-	if not CardMover.hand_to_board(
-		player,
-		card,
-		slot_id
-	):
+		if discarded_card == null:
+			return false
+
+	if not CardMover.hand_to_board(player, card, slot_id):
 		return false
 
-	# کارت از Hand دوباره وارد Board شده است.
-	# افکت‌های یک‌بارمصرف برای این حضور جدید آماده می‌شوند.
 	card.reset_for_board_entry()
-
 	player.current_mana -= mana_cost
 	card.turn_played = state.turn_number
+
 	if card.definition.behavior != null:
 		var play_context := CardBehaviorContext.new(
 			self,
@@ -635,12 +828,9 @@ func play_card(
 			slot_id,
 			replaced_card
 		)
+		card.definition.behavior.on_played_to_board(play_context)
 
-		card.definition.behavior.on_played_to_board(
-			play_context
-		)
-
-	# A play ability (for example lane-discard) may have emptied Front.
+	_restore_guarded_hero_if_protector_missing(player)
 	_normalize_player_front_rows(player)
 
 	var final_slot_id: int = slot_id
@@ -653,177 +843,113 @@ func play_card(
 		final_slot_id,
 		board_before
 	)
-
 	return true
+
 
 func move_board_card(
 	player_id: int,
 	from_slot_id: int,
 	to_slot_id: int
 ) -> bool:
-	if state == null:
+	if state == null or state.phase != MatchPhase.Type.MAIN:
 		return false
-
-	if state.phase != MatchPhase.Type.MAIN:
+	if not SlotID.is_valid(from_slot_id) or not SlotID.is_valid(to_slot_id):
 		return false
-
-	var player: PlayerState = state.get_player(
-		player_id
-	)
-
-	if player == null:
-		return false
-
-	if player.is_ready:
-		return false
-
-	if not SlotID.is_valid(from_slot_id):
-		return false
-
-	if not SlotID.is_valid(to_slot_id):
-		return false
-
 	if from_slot_id == to_slot_id:
 		return false
 
-	# در هر Turn فقط یک بار امکان جابه‌جایی وجود دارد.
-	if (
-		player.board_move_used_turn
-		== state.turn_number
-	):
-		print(
-			"BOARD MOVE FAILED | already used this turn"
-		)
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or player.is_ready:
 		return false
 
-	var moving_card: CardInstance = \
-		player.board.get_card(
-			from_slot_id
-		)
-
-	if not _can_move_in_row_order(
-		player,
-		from_slot_id,
-		to_slot_id
-	):
-		print(
-			"BOARD MOVE FAILED | invalid row order"
-		)
+	var moving_card: CardInstance = player.board.get_card(from_slot_id)
+	if moving_card == null or moving_card.owner_id != player_id:
 		return false
 
-	var board_move_mana_cost: int = get_board_move_mana_cost()
-
-	if player.current_mana < board_move_mana_cost:
-		print(
-			"BOARD MOVE FAILED | not enough mana"
-		)
-		return false
-
-	if moving_card == null:
-		print(
-			"BOARD MOVE FAILED | source slot is empty"
-		)
-		return false
-
-	if moving_card.owner_id != player_id:
-		print(
-			"BOARD MOVE FAILED | card belongs to another player"
-		)
-		return false
-
-	var board_before: Dictionary = \
-		_snapshot_board_cards(player)
-
-	var replaced_card: CardInstance = \
-		player.board.get_card(to_slot_id)
-
-	# مقصد کارت دارد؛ همان قانون Cover عادی اجرا شود.
-	if replaced_card != null:
-		if moving_card.definition == null:
+	if moving_card.is_hero():
+		if not moving_card.hero_revealed:
+			return false
+		if not _can_hero_move_this_turn(moving_card):
+			print("HERO MOVE FAILED | hero move already used this turn")
+			return false
+	else:
+		if player.board_move_used_turn == state.turn_number:
+			print("BOARD MOVE FAILED | already used this turn")
 			return false
 
-		if replaced_card.definition == null:
+	# Heroes now obey the same front/back movement gate as ordinary cards.
+	if not _can_move_in_row_order(player, from_slot_id, to_slot_id):
+		return false
+
+	var move_cost: int = get_board_move_mana_cost_for_card(player_id, moving_card)
+	if player.current_mana < move_cost:
+		return false
+
+	var target_card: CardInstance = player.board.get_card(to_slot_id)
+	var board_before: Dictionary = _snapshot_board_cards(player)
+
+	if target_card != null:
+		if not can_cover_card(player_id, moving_card, to_slot_id):
 			return false
 
-		var turns_since_played: int = (
-			state.turn_number
-			- replaced_card.turn_played
-		)
-
-		if turns_since_played < 1:
-			print(
-				"BOARD COVER FAILED | target card "
-				+ "must survive one full turn first"
-			)
-			return false
-
-		if not CardGesture.can_cover(
-			moving_card.get_gesture(),
-			replaced_card.get_gesture()
-		):
-			print(
-				"BOARD COVER FAILED | moving card "
-				+ "does not beat destination"
-			)
-			return false
-
-		# دقیقاً مثل Cover عادی:
-		# کارت مقصد از Board خارج و Discard می‌شود.
-		var discarded_card: CardInstance = \
-			CardMover.board_to_discard(
+		# Normal board card -> Hero. The normal card is consumed into Reserve and
+		# the persistent Hero takes that card's current R/P/S type.
+		if target_card.is_hero() and not moving_card.is_hero():
+			var consumed: CardInstance = CardMover.board_to_reserve(
 				player,
-				to_slot_id
+				from_slot_id
 			)
+			if consumed == null:
+				return false
 
+			target_card.set_gesture_override(moving_card.get_gesture())
+			target_card.turn_played = state.turn_number
+			player.current_mana -= move_cost
+			player.board_move_used_turn = state.turn_number
+			_restore_guarded_hero_if_protector_missing(player)
+			_normalize_player_front_rows(player)
+			print(
+				"HERO TYPE COVER FROM BOARD | hero=",
+				target_card.definition.display_name,
+				" | new_type=",
+				CardGesture.Type.keys()[target_card.get_gesture()]
+			)
+			return true
+
+		# Hero -> normal card uses the exact same Cover rule as ordinary cards:
+		# the card underneath is sent to Reserve/Discard and the Hero takes its slot.
+		var discarded_card: CardInstance = CardMover.board_to_discard(
+			player,
+			to_slot_id
+		)
 		if discarded_card == null:
 			return false
 
-	var moved: bool = player.board.move_card(
-		from_slot_id,
-		to_slot_id
-	)
-
+	var moved: bool = player.board.move_card(from_slot_id, to_slot_id)
 	if not moved:
-		print(
-			"BOARD MOVE FAILED | BoardState rejected move"
-		)
 		return false
 
-	# Moving a Front card away is legal even if a Back card was behind it.
-	# The Back card simply advances for free.
+	player.current_mana -= move_cost
+	if moving_card.is_hero():
+		moving_card.hero_moves_this_turn += 1
+		moving_card.hero_last_moved_turn = state.turn_number
+	else:
+		player.board_move_used_turn = state.turn_number
+
+	_restore_guarded_hero_if_protector_missing(player)
 	_normalize_player_front_rows(player)
 
-	player.current_mana -= \
-		board_move_mana_cost
-
-	player.board_move_used_turn = \
-		state.turn_number
-
-	var final_move_slot_id: int = to_slot_id
+	var final_slot_id: int = to_slot_id
 	if SlotID.is_valid(moving_card.current_slot):
-		final_move_slot_id = moving_card.current_slot
+		final_slot_id = moving_card.current_slot
 
 	_record_completed_board_move(
 		player_id,
 		moving_card,
 		from_slot_id,
-		final_move_slot_id,
+		final_slot_id,
 		board_before
 	)
-
-	print(
-		"BOARD CARD MOVED | player=",
-		player_id,
-		" | card=",
-		moving_card.definition.display_name,
-		" | from=",
-		from_slot_id,
-		" | to=",
-		to_slot_id,
-		" | mana_left=",
-		player.current_mana
-	)
-
 	return true
 
 
@@ -852,6 +978,19 @@ func _start_new_turn_for_player(
 			player,
 			state.rules.cards_drawn_per_turn
 		)
+
+	# Hero rewards are extra cards and arrive after the normal hand draw.
+	for reward: CardInstance in player.pending_hero_rewards:
+		if reward == null:
+			continue
+		reward.zone = CardZone.Type.HAND
+		reward.current_slot = CardInstance.NO_SLOT
+		player.hand.append(reward)
+		drawn_cards.append(reward)
+	player.pending_hero_rewards.clear()
+
+	if player.hero != null:
+		player.hero.hero_moves_this_turn = 0
 
 	print(
 		"NEW TURN HAND | player=",
@@ -938,8 +1077,9 @@ func _run_start_combat_behaviors() -> void:
 			context
 		)
 
-	# Start-combat abilities may remove cards from Front. Repack before the
-	# battle sequence is built so combat reads the final board correctly.
+	# Start-combat abilities (Collector, etc.) may remove a guard card. If that
+	# happens the Hero immediately resurfaces before the battle is built.
+	_restore_missing_guarded_heroes()
 	_normalize_all_player_front_rows()
 
 
@@ -1014,8 +1154,8 @@ func apply_battle_act(
 		)
 
 	if attacker_player != null:
-		attacker_player.score += \
-			act.attacker_points
+		attacker_player.score += act.attacker_points
+		_add_player_energy(attacker_player, act.attacker_points)
 
 	if act.defender_owner_id != 0:
 		var defender_player: PlayerState = \
@@ -1024,11 +1164,169 @@ func apply_battle_act(
 			)
 
 		if defender_player != null:
-			defender_player.score += \
-				act.defender_points
+			defender_player.score += act.defender_points
+			_add_player_energy(defender_player, act.defender_points)
 
+	_apply_hero_health_damage_from_act(act)
+	_apply_hero_battle_metadata(act)
 	act.resolved = true
 
+	return true
+
+
+func _apply_hero_health_damage_from_act(act: BattleAct) -> void:
+	if act == null or act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+		return
+
+	if (
+		act.attacker != null
+		and act.attacker.is_hero()
+		and act.defender != null
+		and act.defender.is_hero()
+		and act.attacker_outcome == BattleAct.Outcome.WIN
+		and act.attacker_unshielded_hero_hits > 0
+	):
+		var damage: int = mini(
+			act.attacker_unshielded_hero_hits,
+			maxi(0, act.defender.hero_health)
+		)
+		act.defender.hero_health = maxi(0, act.defender.hero_health - damage)
+		print(
+			"HERO HP DAMAGE | attacker=", act.attacker_owner_id,
+			" | target=", act.defender_owner_id,
+			" | damage=", damage,
+			" | hp=", act.defender.hero_health, "/", act.defender.hero_max_health
+		)
+
+	if (
+		act.defender != null
+		and act.defender.is_hero()
+		and act.attacker != null
+		and act.attacker.is_hero()
+		and act.defender_outcome == BattleAct.Outcome.WIN
+		and act.defender_unshielded_hero_hits > 0
+	):
+		var damage: int = mini(
+			act.defender_unshielded_hero_hits,
+			maxi(0, act.attacker.hero_health)
+		)
+		act.attacker.hero_health = maxi(0, act.attacker.hero_health - damage)
+		print(
+			"HERO HP DAMAGE | attacker=", act.defender_owner_id,
+			" | target=", act.attacker_owner_id,
+			" | damage=", damage,
+			" | hp=", act.attacker.hero_health, "/", act.attacker.hero_max_health
+		)
+
+
+func _add_player_energy(player: PlayerState, amount: int) -> void:
+	if player == null or state == null or state.rush_mode_enabled:
+		return
+	if amount == 0:
+		return
+
+	player.energy_points = clampi(
+		player.energy_points + amount,
+		0,
+		MAX_ENERGY_POINTS
+	)
+
+
+func get_player_energy(player_id: int) -> int:
+	if state == null:
+		return 0
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return 0
+	return clampi(player.energy_points, 0, MAX_ENERGY_POINTS)
+
+
+func get_player_energy_bars(player_id: int) -> int:
+	return mini(
+		MAX_ENERGY_BARS,
+		floori(float(get_player_energy(player_id)) / float(ENERGY_PER_BAR))
+	)
+
+
+func can_use_special_attack(player_id: int) -> bool:
+	if state == null or state.rush_mode_enabled:
+		return false
+	if state.phase != MatchPhase.Type.MAIN:
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+	if player == null or player.is_ready:
+		return false
+	if player.energy_points < MAX_ENERGY_POINTS:
+		return false
+
+	var opponent_id: int = 2 if player_id == 1 else 1
+	var opponent: PlayerState = state.get_player(opponent_id)
+	if opponent == null or opponent.hero == null:
+		return false
+	if opponent.hero.hero_health <= 0:
+		return false
+
+	return true
+
+
+func use_special_attack(player_id: int) -> bool:
+	if not can_use_special_attack(player_id):
+		return false
+
+	var player: PlayerState = state.get_player(player_id)
+	var opponent_id: int = 2 if player_id == 1 else 1
+	var opponent: PlayerState = state.get_player(opponent_id)
+	var target_hero: CardInstance = opponent.hero
+
+	# Four full bars are always consumed. A temporary shield blocks this one
+	# health loss exactly like it blocks an unshielded Hero-vs-Hero hit.
+	player.energy_points = 0
+	if target_hero.shield_count > 0:
+		target_hero.shield_count -= 1
+		print(
+			"SPECIAL BLOCKED BY SHIELD | attacker=", player_id,
+			" | target=", opponent_id,
+			" | shields_left=", target_hero.shield_count
+		)
+	else:
+		target_hero.hero_health = maxi(0, target_hero.hero_health - 1)
+		print(
+			"SPECIAL HERO DAMAGE | attacker=", player_id,
+			" | target=", opponent_id,
+			" | hp=", target_hero.hero_health, "/", target_hero.hero_max_health
+		)
+
+	_check_hero_health_victory()
+	return true
+
+
+func _check_hero_health_victory() -> bool:
+	if state == null or state.rush_mode_enabled:
+		return false
+	if state.player_one == null or state.player_two == null:
+		return false
+	if state.player_one.hero == null or state.player_two.hero == null:
+		return false
+
+	var player_one_dead: bool = state.player_one.hero.hero_health <= 0
+	var player_two_dead: bool = state.player_two.hero.hero_health <= 0
+	if not player_one_dead and not player_two_dead:
+		return false
+
+	if player_one_dead and player_two_dead:
+		state.winner_id = 0
+	elif player_one_dead:
+		state.winner_id = 2
+	else:
+		state.winner_id = 1
+
+	state.phase = MatchPhase.Type.GAME_OVER
+	print("")
+	print("========== HERO GAME OVER ==========")
+	print("WINNER ID: ", state.winner_id)
+	print("PLAYER 1 HERO HP: ", state.player_one.hero.hero_health)
+	print("PLAYER 2 HERO HP: ", state.player_two.hero.hero_health)
 	return true
 
 
@@ -1074,6 +1372,8 @@ func _send_board_card_to_reserve(
 	reason: String
 ) -> bool:
 	if card == null:
+		return false
+	if card.is_hero():
 		return false
 
 	var player: PlayerState = state.get_player(
@@ -1121,6 +1421,8 @@ func _remove_board_card_permanently(
 ) -> bool:
 	if card == null or state == null:
 		return false
+	if card.is_hero():
+		return false
 
 	var player: PlayerState = state.get_player(player_id)
 
@@ -1165,6 +1467,8 @@ func _append_unique_rush_loser(
 		return
 
 	if player_id not in [1, 2] or card == null:
+		return
+	if card.is_hero():
 		return
 
 	if not rush_pvp_loser_snapshot.has(player_id):
@@ -1234,6 +1538,8 @@ func _remove_rush_loser_by_reference(
 	card: CardInstance
 ) -> bool:
 	if state == null or card == null:
+		return false
+	if card.is_hero():
 		return false
 
 	var player: PlayerState = state.get_player(player_id)
@@ -1616,6 +1922,10 @@ func finish_combat() -> bool:
 	# دو بازیکن در همان لاین بعد از Combat از زمین خارج می‌شوند.
 	if not state.rush_mode_enabled:
 		_resolve_dealer_lane_losers()
+
+	# A Hero guard lasts exactly this combat turn. The protecting normal card
+	# now goes to Reserve and the Hero resurfaces before board normalization.
+	_expire_hero_guards()
 
 	# Cleanup is complete. Any survivor directly behind an empty Front advances.
 	_normalize_all_player_front_rows()
@@ -2008,13 +2318,12 @@ func finalize_combat_score() -> bool:
 	if state.phase != MatchPhase.Type.BATTLE:
 		return false
 
-	# Rush scores may still be displayed, but they never end the match.
+	# Rush keeps its own card-elimination victory condition. Normal mode now
+	# ends only when a Hero reaches zero health; score only charges Energy.
 	if state.rush_mode_enabled:
 		return false
 
-	# فقط وقتی تمام BattleActهای این Turn محاسبه شدند
-	# اجازه داریم اختلاف نهایی را بررسی کنیم.
-	return _check_score_victory()
+	return _check_hero_health_victory()
 
 
 func _check_score_victory() -> bool:

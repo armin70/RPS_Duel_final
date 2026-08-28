@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="HeroDefinition" format=3 uid="uid://ce0h57bx1b5f4"]
+
+[ext_resource type="Script" uid="uid://bp5hdyytixkvw" path="res://core/heroes/hero_definition.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://cni58jd3an17p" path="res://art/heroes/rostam.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+active_mana_cost = 2
+active_title = "Fury"
+active_description = "Attack twice this turn. Next turn, any Rostam win becomes a tie."
+card_id = &"hero_rostam"
+display_name = "Rostam"
+mana_cost = 0
+visual_id = &"hero_rostam"
+front_texture = ExtResource("2")
+info_image = ExtResource("2")

@@ -16,6 +16,33 @@ var disabled_combat_turn: int = -1
 var shield_count: int = 0
 var shields_initialized: bool = false
 
+# Optional per-instance mana override. Tahmineh uses this for the free Paper
+# card created by her passive without mutating the shared CardDefinition.
+var mana_cost_override: int = -1
+
+# Runtime Hero state. Normal cards simply leave these values unused.
+var hero_moves_this_turn: int = 0
+var hero_last_moved_turn: int = -1
+var hero_active_used_turn: int = -1
+var hero_fury_turn: int = -1
+var hero_sleep_turn: int = -1
+var hero_root_turn: int = -1
+var hero_afrasiab_active_turn: int = -1
+var hero_stealth_turn: int = -1 # legacy, no longer used
+# Heroes now use health as the real victory resource. Shield remains a
+# temporary one-hit buffer that can be gained by abilities/effects.
+var hero_health: int = 0
+var hero_max_health: int = 0
+# Reveal state is presentation-facing: the local Hero is visible after setup,
+# while the opponent Hero becomes public with the first-turn card reveal.
+var hero_revealed: bool = false
+
+# Temporary Hero guard. When a Hero covers one of its owner's normal cards,
+# the Hero tucks underneath that card for the current turn. The normal card
+# remains the active board card and protects the Hero until cleanup.
+var hero_guard_card_instance_id: int = -1
+var hero_guard_turn: int = -1
+
 # Rush transformation is per CardInstance. Never mutate CardDefinition.gesture,
 # because the same Resource is shared by every copy of that card.
 var gesture_override: int = -1
@@ -44,6 +71,73 @@ func has_gesture_override() -> bool:
 
 func set_gesture_override(new_gesture: CardGesture.Type) -> void:
 	gesture_override = int(new_gesture)
+
+
+func get_mana_cost() -> int:
+	if mana_cost_override >= 0:
+		return mana_cost_override
+
+	if definition == null:
+		return 0
+
+	return maxi(0, definition.mana_cost)
+
+
+func is_hero() -> bool:
+	return definition is HeroDefinition
+
+
+func get_hero_definition() -> HeroDefinition:
+	return definition as HeroDefinition
+
+
+func is_hero_stealthed(turn_number: int) -> bool:
+	return is_hero() and hero_stealth_turn == turn_number
+
+
+func is_hero_furious(turn_number: int) -> bool:
+	return is_hero() and hero_fury_turn == turn_number
+
+
+func is_hero_sleeping(turn_number: int) -> bool:
+	return is_hero() and hero_sleep_turn == turn_number
+
+
+func is_hero_rooted(turn_number: int) -> bool:
+	return is_hero() and hero_root_turn == turn_number
+
+
+func is_hero_afrasiab_active(turn_number: int) -> bool:
+	return is_hero() and hero_afrasiab_active_turn == turn_number
+
+
+func is_hero_guarded() -> bool:
+	return (
+		is_hero()
+		and hero_guard_card_instance_id >= 0
+		and hero_guard_turn >= 0
+	)
+
+
+func set_hero_guard(
+	protector: CardInstance,
+	turn_number: int,
+	slot_id: int
+) -> void:
+	if not is_hero() or protector == null:
+		return
+
+	hero_guard_card_instance_id = protector.instance_id
+	hero_guard_turn = turn_number
+	zone = CardZone.Type.BOARD
+	current_slot = slot_id
+
+
+func clear_hero_guard() -> void:
+	hero_guard_card_instance_id = -1
+	hero_guard_turn = -1
+
+
 
 func is_disabled_in_combat(
 	combat_turn: int

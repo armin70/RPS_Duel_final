@@ -46,6 +46,10 @@ func on_played_to_board(
 		if target_card == source_card:
 			continue
 
+		# Hero داخل Lane توسط این افکت Discard نمی‌شود.
+		if target_card.is_hero():
+			continue
+
 		var removed_card: CardInstance = \
 			CardMover.board_to_discard(
 				player,

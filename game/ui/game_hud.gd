@@ -690,11 +690,21 @@ func refresh(
 		opponent_score_label.text = \
 			"Opponent Cards: %d" % opponent.get_remaining_card_count()
 	else:
+		var player_hp: int = (
+			player.hero.hero_health
+			if player.hero != null
+			else 0
+		)
+		var opponent_hp: int = (
+			opponent.hero.hero_health
+			if opponent.hero != null
+			else 0
+		)
 		player_score_label.text = \
-			"Your Score: %d" % player.score
+			"HP: %d" % player_hp
 
 		opponent_score_label.text = \
-			"Opponent Score: %d" % opponent.score
+			"Enemy HP: %d" % opponent_hp
 
 	player_mana_label.text = \
 		" %d / %d" % [
@@ -742,7 +752,8 @@ func show_game_over(
 	opponent_score: int,
 	score_difference: int,
 	is_draw: bool = false,
-	rush_mode: bool = false
+	rush_mode: bool = false,
+	hero_mode: bool = false
 ) -> void:
 	if is_draw:
 		result_label.text = "DRAW"
@@ -757,6 +768,14 @@ func show_game_over(
 			+ str(local_score)
 			+ "\n"
 			+ "OPPONENT CARDS LEFT: "
+			+ str(opponent_score)
+		)
+	elif hero_mode:
+		score_label.text = (
+			"YOUR HERO HP: "
+			+ str(local_score)
+			+ "\n"
+			+ "OPPONENT HERO HP: "
 			+ str(opponent_score)
 		)
 	else:

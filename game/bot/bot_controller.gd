@@ -12,7 +12,13 @@ const HARDCORE_SETTING: StringName = &"gameplay/hardcore_bot"
 # position is meaningfully better.
 const STRATEGIC_MOVE_MIN_IMPROVEMENT: float = 4.0
 const STRATEGIC_MOVE_MANA_PENALTY: float = 1.15
-
+const HERO_ACTIVE_MIN_SCORE: float = 3.0
+const EXPOSED_HERO_HIT_VALUE: float = 8.0
+const HERO_HEALTH_DAMAGE_VALUE: float = 14.0
+const HERO_KILL_VALUE: float = 45.0
+# Changing a Hero type spends a real hand card. Only do it when the new
+# matchup is clearly better than keeping the current type.
+const HERO_TYPE_CHANGE_MIN_IMPROVEMENT: float = 5.0
 
 var random := RandomNumberGenerator.new()
 
@@ -123,6 +129,22 @@ func _make_fair_card_snapshot(
 		card.shields_initialized
 	)
 	snapshot.ability_used = card.ability_used
+	snapshot.mana_cost_override = card.mana_cost_override
+	snapshot.hero_moves_this_turn = card.hero_moves_this_turn
+	snapshot.hero_last_moved_turn = card.hero_last_moved_turn
+	snapshot.hero_active_used_turn = card.hero_active_used_turn
+	snapshot.hero_fury_turn = card.hero_fury_turn
+	snapshot.hero_sleep_turn = card.hero_sleep_turn
+	snapshot.hero_root_turn = card.hero_root_turn
+	snapshot.hero_afrasiab_active_turn = card.hero_afrasiab_active_turn
+	snapshot.hero_stealth_turn = card.hero_stealth_turn
+	snapshot.hero_revealed = card.hero_revealed
+	snapshot.hero_health = card.hero_health
+	snapshot.hero_max_health = card.hero_max_health
+	# Persistent Hero type changes are public from previous turns. Copy the
+	# per-instance override into the fair snapshot; current-turn changes remain
+	# hidden because the snapshot itself was captured before the turn actions.
+	snapshot.gesture_override = card.gesture_override
 
 	return snapshot
 
@@ -257,6 +279,178 @@ func _is_card_disabled_for_bot_view(
 	return false
 
 
+func try_activate_hero_power(
+	engine: MatchEngine,
+	bot_player_id: int
+) -> bool:
+	if engine == null or engine.state == null:
+		return false
+	if not engine.can_activate_hero_active(bot_player_id):
+		return false
+
+	var state: MatchState = engine.state
+	var bot: PlayerState = state.get_player(bot_player_id)
+	if bot == null or bot.hero == null:
+		return false
+	var hero: CardInstance = bot.hero
+	if not hero.hero_revealed:
+		return false
+	var hero_def: HeroDefinition = hero.get_hero_definition()
+	if hero_def == null:
+		return false
+
+	var opponent_id: int = 2 if bot_player_id == 1 else 1
+	var opponent: PlayerState = state.get_player(opponent_id)
+	if opponent == null:
+		return false
+
+	var score: float = _score_hero_active_use(
+		state,
+		bot,
+		opponent,
+		hero,
+		hero_def
+	)
+	if score < HERO_ACTIVE_MIN_SCORE:
+		return false
+
+	var activated: bool = engine.activate_hero_active(bot_player_id)
+	if activated:
+		print(
+			"BOT HERO ACTIVE | hero=",
+			hero_def.display_name,
+			" | active=",
+			hero_def.active_title,
+			" | score=",
+			score,
+			" | mana_left=",
+			bot.current_mana
+		)
+	return activated
+
+
+func _score_hero_active_use(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	hero: CardInstance,
+	hero_def: HeroDefinition
+) -> float:
+	if state == null or bot == null or opponent == null or hero == null:
+		return INVALID_SCORE
+	if not SlotID.is_valid(hero.current_slot):
+		return INVALID_SCORE
+
+	var score: float = -float(hero_def.active_mana_cost) * 0.7
+	var immediate_risk: float = _hero_immediate_risk(
+		state, bot, opponent, hero, hero.current_slot
+	)
+
+	match hero_def.hero_kind:
+		HeroDefinition.HeroKind.ROSTAM:
+			# Fury is worth using when Rostam currently has real wins. The AI also
+			# prices in the forced Sleep turn that follows.
+			var win_targets: int = 0
+			for target_slot: int in _get_opponent_target_slots(hero.current_slot):
+				var target: CardInstance = _get_visible_opponent_card(state, opponent, target_slot)
+				if target == null:
+					continue
+				if _compare_gestures(hero.get_gesture(), target.get_gesture()) == BattleAct.Outcome.WIN:
+					win_targets += 1
+					score += 7.0
+					if target.is_hero():
+						if target.shield_count <= 1:
+							score += EXPOSED_HERO_HIT_VALUE
+			for dealer_slot: int in _get_dealer_target_slots(state, bot, hero, hero.current_slot):
+				var dealer_card: CardInstance = state.dealer.slots.get(dealer_slot, null) as CardInstance
+				if dealer_card != null and _compare_gestures(hero.get_gesture(), dealer_card.get_gesture()) == BattleAct.Outcome.WIN:
+					win_targets += 1
+					score += 2.5
+			if win_targets == 0:
+				score -= 8.0
+			score -= 2.0 # next-turn Sleep cost
+
+		HeroDefinition.HeroKind.TAHMINEH:
+			# Shield + Root is most valuable when a Hero-vs-Hero hit could remove
+			# a scarce HP, but it is still a real movement tradeoff.
+			score += immediate_risk * 1.1
+			if hero.shield_count <= 0:
+				score += 6.0
+			if hero.hero_health <= 2:
+				score += 6.0
+			if hero.hero_health <= 1:
+				score += 8.0
+			if immediate_risk < 1.0:
+				score -= 3.0
+
+		HeroDefinition.HeroKind.AFRASIAB:
+			# Gambit wants ties and dislikes losses. Estimate all visible clashes
+			# involving Afrasiab this turn and only spend mana with a positive edge.
+			var expected_bonus: float = 0.0
+			for target_slot: int in _get_opponent_target_slots(hero.current_slot):
+				var target: CardInstance = _get_visible_opponent_card(state, opponent, target_slot)
+				if target == null:
+					continue
+				var outcome: int = _predict_pvp_outcome(state, hero, target)
+				if outcome == BattleAct.Outcome.TIE:
+					expected_bonus += 3.0
+				elif outcome == BattleAct.Outcome.LOSS:
+					expected_bonus -= 2.0
+			for dealer_slot: int in _get_dealer_target_slots(state, bot, hero, hero.current_slot):
+				var dealer_card: CardInstance = state.dealer.slots.get(dealer_slot, null) as CardInstance
+				if dealer_card == null:
+					continue
+				var dealer_outcome: int = _compare_gestures(hero.get_gesture(), dealer_card.get_gesture())
+				if dealer_outcome == BattleAct.Outcome.TIE:
+					expected_bonus += 3.0
+				elif dealer_outcome == BattleAct.Outcome.LOSS:
+					expected_bonus -= 2.0
+			score += expected_bonus * 1.5
+
+	return score
+
+
+func _hero_immediate_risk(
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState,
+	hero: CardInstance,
+	slot_id: int
+) -> float:
+	if state == null or bot == null or opponent == null or hero == null:
+		return 0.0
+	var risk: float = 0.0
+	for target_slot: int in _get_opponent_target_slots(slot_id):
+		var target: CardInstance = _get_visible_opponent_card(
+			state, opponent, target_slot
+		)
+		if target == null:
+			continue
+
+		var old_shield: int = hero.shield_count
+		hero.shield_count = 0
+		var exposed_outcome: int = _predict_pvp_outcome(state, hero, target)
+		hero.shield_count = old_shield
+		if exposed_outcome != BattleAct.Outcome.LOSS:
+			continue
+
+		# Normal cards can burn a shield and farm Energy, but only the enemy Hero
+		# can directly remove HP. The bot therefore protects Hero-vs-Hero losses
+		# much more aggressively, especially near death.
+		if target.is_hero():
+			var hp_factor: float = 1.0
+			if hero.hero_health <= 1:
+				hp_factor = 3.0
+			elif hero.hero_health <= 2:
+				hp_factor = 1.8
+			risk += HERO_HEALTH_DAMAGE_VALUE * hp_factor
+			if hero.shield_count > 0:
+				risk *= 0.45
+		else:
+			risk += 4.0 if hero.shield_count <= 0 else 1.5
+	return risk
+
+
 func play_turn(
 	engine: MatchEngine,
 	bot_player_id: int
@@ -306,6 +500,11 @@ func play_turn(
 		"HARDCORE" if is_hardcore_mode() else "FAIR"
 	)
 
+	# Hero survival/pressure is evaluated before generic board movement. This
+	# makes the bot protect exposed Heroes and deliberately chase 15-point hits.
+	if _try_best_hero_move(engine, state, bot, opponent):
+		completed_actions += 1
+
 	# اول کارت Disableشده را واقعاً از خطر خارج می‌کنیم.
 	# ترتیب دفاعی:
 	# 1) انتقال به Lane امن
@@ -327,6 +526,17 @@ func play_turn(
 	):
 		completed_actions += 1
 	elif _try_bomb_disabled_lane(
+		engine,
+		state,
+		bot,
+		opponent
+	):
+		completed_actions += 1
+
+	# A normal card may be covered onto our Hero to permanently change that
+	# Hero's current R/P/S type. Do this only when the transformation makes a
+	# meaningful tactical difference; winning the match is still the priority.
+	if _try_strategic_hero_type_change(
 		engine,
 		state,
 		bot,
@@ -533,7 +743,7 @@ func _find_best_rush_play_candidate(
 		if card == null or card.definition == null:
 			continue
 
-		if card.definition.mana_cost > bot.current_mana:
+		if card.get_mana_cost() > bot.current_mana:
 			continue
 
 		for slot_id: int in SlotID.all_slots():
@@ -590,7 +800,7 @@ func _score_rush_play_candidate(
 		slot_id
 	)
 
-	var cost: int = card.definition.mana_cost
+	var cost: int = card.get_mana_cost()
 	var penalty_before: int = _rush_penalty_count_for_mana(
 		bot.current_mana
 	)
@@ -707,9 +917,10 @@ func _score_rush_card_matchups(
 
 		known_targets += 1
 
-		var outcome: int = _compare_gestures(
-			card.get_gesture(),
-			target.get_gesture()
+		var outcome: int = _predict_pvp_outcome(
+			state,
+			card,
+			target
 		)
 
 		if (
@@ -788,9 +999,6 @@ func _try_best_rush_move(
 	if engine == null or state == null or bot == null or opponent == null:
 		return false
 
-	if bot.board_move_used_turn == state.turn_number:
-		return false
-
 	var best_from: int = -1
 	var best_to: int = -1
 	var best_improvement: float = 2.0
@@ -799,6 +1007,16 @@ func _try_best_rush_move(
 		var moving_card: CardInstance = bot.board.get_card(from_slot_id)
 
 		if moving_card == null or moving_card.definition == null:
+			continue
+		if (
+			bot.board_move_used_turn == state.turn_number
+			and not moving_card.is_hero()
+		):
+			continue
+		if bot.current_mana < engine.get_board_move_mana_cost_for_card(
+			bot.player_id,
+			moving_card
+		):
 			continue
 
 		var current_score: float = _score_rush_card_matchups(
@@ -976,6 +1194,128 @@ func _rush_penalty_count_for_mana(mana: int) -> int:
 	return floori(float(maxi(0, mana)) / 2.0)
 
 
+func _try_strategic_hero_type_change(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> bool:
+	if engine == null or state == null or bot == null or opponent == null:
+		return false
+	if state.rush_mode_enabled:
+		return false
+
+	var hero: CardInstance = bot.hero
+	if hero == null or not hero.is_hero():
+		return false
+	if not hero.hero_revealed:
+		return false
+	if hero.zone != CardZone.Type.BOARD:
+		return false
+	if not SlotID.is_valid(hero.current_slot):
+		return false
+	if bot.board.get_card(hero.current_slot) != hero:
+		return false
+
+	var hero_slot: int = hero.current_slot
+	var old_gesture: CardGesture.Type = hero.get_gesture()
+	var old_position_score: float = _score_existing_card_position(
+		state,
+		bot,
+		opponent,
+		hero,
+		hero_slot
+	)
+	var old_risk: float = _hero_immediate_risk(
+		state,
+		bot,
+		opponent,
+		hero,
+		hero_slot
+	)
+
+	var best_card: CardInstance = null
+	var best_improvement: float = HERO_TYPE_CHANGE_MIN_IMPROVEMENT
+	var best_new_gesture: int = -1
+
+	for hand_card: CardInstance in bot.hand:
+		if hand_card == null or hand_card.definition == null:
+			continue
+		if hand_card.is_hero():
+			continue
+		if hand_card.get_mana_cost() > bot.current_mana:
+			continue
+		if hand_card.get_gesture() == old_gesture:
+			continue
+		if not _is_legal_play_candidate(
+			state,
+			bot,
+			hand_card,
+			hero_slot
+		):
+			continue
+
+		var old_override: int = hero.gesture_override
+		hero.set_gesture_override(hand_card.get_gesture())
+
+		var new_position_score: float = _score_existing_card_position(
+			state,
+			bot,
+			opponent,
+			hero,
+			hero_slot
+		)
+		var new_risk: float = _hero_immediate_risk(
+			state,
+			bot,
+			opponent,
+			hero,
+			hero_slot
+		)
+
+		hero.gesture_override = old_override
+
+		var improvement: float = (
+			(new_position_score - old_position_score) * 1.6
+			+ (old_risk - new_risk) * 1.15
+			- _card_importance(hand_card) * 0.45
+			- float(hand_card.get_mana_cost()) * 0.35
+		)
+
+		# When Shield is low, avoiding a predicted loss is worth a little more,
+		# but this stays below the generic value of simply winning good lanes.
+		if hero.shield_count <= 2 and new_risk < old_risk:
+			improvement += 1.25
+
+		if improvement > best_improvement:
+			best_improvement = improvement
+			best_card = hand_card
+			best_new_gesture = int(hand_card.get_gesture())
+
+	if best_card == null:
+		return false
+
+	var changed: bool = engine.play_card(
+		bot.player_id,
+		best_card,
+		hero_slot
+	)
+
+	if changed:
+		print(
+			"BOT HERO TYPE CHANGE | hero=",
+			hero.definition.display_name,
+			" | from=",
+			CardGesture.Type.keys()[int(old_gesture)],
+			" | to=",
+			CardGesture.Type.keys()[best_new_gesture],
+			" | improvement=",
+			best_improvement
+		)
+
+	return changed
+
+
 func _find_best_play_candidate(
 	state: MatchState,
 	bot: PlayerState,
@@ -989,7 +1329,7 @@ func _find_best_play_candidate(
 		if card == null or card.definition == null:
 			continue
 
-		if card.definition.mana_cost > bot.current_mana:
+		if card.get_mana_cost() > bot.current_mana:
 			continue
 
 		# Collector فقط وقتی استفاده می‌شود که حداقل دو کارت
@@ -1087,7 +1427,7 @@ func _is_legal_play_candidate(
 	if not SlotID.is_valid(slot_id):
 		return false
 
-	if card.definition.mana_cost > bot.current_mana:
+	if card.get_mana_cost() > bot.current_mana:
 		return false
 
 	var required_front_slot: int = \
@@ -1108,12 +1448,19 @@ func _is_legal_play_candidate(
 	if replaced_card.definition == null:
 		return false
 
+	if (
+		bot.hero != null
+		and bot.hero.is_hero_guarded()
+		and bot.hero.hero_guard_card_instance_id == replaced_card.instance_id
+	):
+		return false
+
 	var turns_since_played: int = (
 		state.turn_number
 		- replaced_card.turn_played
 	)
 
-	if turns_since_played < 2:
+	if turns_since_played < 1:
 		return false
 
 	return CardGesture.can_cover(
@@ -1133,7 +1480,32 @@ func _score_play_candidate(
 
 	# خرج Mana مهم است، ولی نباید باعث شود ربات
 	# کارت مفید را اصلاً بازی نکند.
-	score -= float(card.definition.mana_cost) * 0.35
+	score -= float(card.get_mana_cost()) * 0.35
+
+	var existing_target: CardInstance = bot.board.get_card(slot_id)
+	if existing_target != null and existing_target.is_hero():
+		# Playing a normal card onto our Hero does not leave that normal card on
+		# the board. It changes the Hero's type, so evaluate the Hero before/after
+		# the transformation instead of pretending the hand card will fight here.
+		var old_override: int = existing_target.gesture_override
+		var old_score: float = _score_existing_card_position(
+			state, bot, opponent, existing_target, slot_id
+		)
+		existing_target.set_gesture_override(card.get_gesture())
+		var new_score: float = _score_existing_card_position(
+			state, bot, opponent, existing_target, slot_id
+		)
+		existing_target.gesture_override = old_override
+		var transformation_score: float = (
+			(new_score - old_score) * 2.2
+			- _card_importance(card) * 0.55
+			- float(card.get_mana_cost()) * 0.35
+		)
+		# Type-changing is a tactical option, not the main objective. A small
+		# bonus only helps it beat mediocre plays when it clearly improves Hero.
+		if new_score - old_score >= 3.0:
+			transformation_score += 1.0
+		return transformation_score
 
 	# مبارزه با Player مقابل مهم‌تر از Dealer است.
 	score += _score_against_opponent(
@@ -1207,9 +1579,10 @@ func _score_against_opponent(
 		if target == null or target.definition == null:
 			continue
 
-		var bot_outcome: int = _compare_gestures(
-			card.get_gesture(),
-			target.get_gesture()
+		var bot_outcome: int = _predict_pvp_outcome(
+			state,
+			card,
+			target
 		)
 
 		# Credit Card در Turn ورود Scissors را می‌برد.
@@ -1270,6 +1643,12 @@ func _score_against_opponent(
 			bot_outcome = BattleAct.Outcome.TIE
 			opponent_outcome = BattleAct.Outcome.TIE
 
+		score += _score_hero_matchup_value(
+			state,
+			card,
+			target,
+			bot_outcome
+		)
 		score += _outcome_value(bot_outcome)
 		score -= _outcome_value(opponent_outcome) * 0.75
 
@@ -1280,6 +1659,65 @@ func _score_against_opponent(
 		):
 			score += 10.0
 			score += _card_importance(target) * 2.2
+
+	return score
+
+
+func _score_hero_matchup_value(
+	state: MatchState,
+	bot_card: CardInstance,
+	target: CardInstance,
+	bot_outcome: int
+) -> float:
+	if bot_card == null or target == null:
+		return 0.0
+
+	var score: float = 0.0
+	if target.is_hero():
+		var target_old_shield: int = target.shield_count
+		target.shield_count = 0
+		var exposed_target_outcome: int = _predict_pvp_outcome(
+			state, bot_card, target
+		)
+		target.shield_count = target_old_shield
+
+		if exposed_target_outcome == BattleAct.Outcome.WIN:
+			# Every exposed Hero loss is still a strong Energy opportunity. If the
+			# attacker is also a Hero it additionally removes real HP and can win.
+			if target.shield_count <= 0:
+				score += EXPOSED_HERO_HIT_VALUE
+			else:
+				score += 2.0
+			if bot_card.is_hero():
+				if target.shield_count <= 0:
+					score += HERO_HEALTH_DAMAGE_VALUE
+					if target.hero_health <= 1:
+						score += HERO_KILL_VALUE
+				else:
+					score += 5.0
+
+	if bot_card.is_hero():
+		var bot_old_shield: int = bot_card.shield_count
+		bot_card.shield_count = 0
+		var exposed_bot_outcome: int = _predict_pvp_outcome(
+			state, bot_card, target
+		)
+		bot_card.shield_count = bot_old_shield
+
+		if exposed_bot_outcome == BattleAct.Outcome.LOSS:
+			if target.is_hero():
+				var danger: float = HERO_HEALTH_DAMAGE_VALUE
+				if bot_card.hero_health <= 1:
+					danger += HERO_KILL_VALUE
+				elif bot_card.hero_health <= 2:
+					danger *= 1.5
+				if bot_card.shield_count > 0:
+					danger *= 0.45
+				score -= danger
+			else:
+				# A normal card cannot directly remove Hero HP, but it can burn a
+				# valuable shield and charge the opponent's Energy.
+				score -= 5.0 if bot_card.shield_count <= 0 else 2.0
 
 	return score
 
@@ -1353,6 +1791,11 @@ func _score_against_dealer(
 		):
 			outcome = BattleAct.Outcome.TIE
 
+		if card.is_hero_sleeping(state.turn_number) and outcome == BattleAct.Outcome.WIN:
+			outcome = BattleAct.Outcome.TIE
+		if card.is_hero() and card.shield_count > 0 and outcome == BattleAct.Outcome.LOSS:
+			outcome = BattleAct.Outcome.TIE
+
 		match outcome:
 			BattleAct.Outcome.WIN:
 				score += 5.0
@@ -1361,7 +1804,11 @@ func _score_against_dealer(
 				score += 1.25
 
 			BattleAct.Outcome.LOSS:
-				score -= 3.5
+				if card.is_hero():
+					# Dealer can burn a temporary shield but can never remove Hero HP.
+					score -= 3.0 if card.shield_count <= 0 else 1.75
+				else:
+					score -= 3.5
 
 	return score
 
@@ -1641,7 +2088,6 @@ func _calculate_move_net_benefit(
 		if state.rush_mode_enabled
 		else STRATEGIC_MOVE_MANA_PENALTY
 	)
-
 	var benefit: float = (
 		destination_score
 		- current_score
@@ -1661,24 +2107,109 @@ func _calculate_move_net_benefit(
 			to_slot_id
 		)
 
-		# Cover means we intentionally give up the card already there.
-		# This is a REAL cost, especially for valuable/special cards.
-		benefit -= _card_importance(replaced) * 1.25
-
-		# If that card is genuinely in a bad position, removing it has some value,
-		# but this bonus is capped so the bot does not Cover for weak reasons.
-		if replaced_score < -4.0:
-			benefit += minf(
-				abs(replaced_score) * 0.35,
-				4.0
+		if moving_card.is_hero() and not replaced.is_hero():
+			# Hero uses ordinary Cover here: the card underneath is sacrificed.
+			benefit -= _card_importance(replaced) * 1.25
+			if replaced_score < -4.0:
+				benefit += minf(abs(replaced_score) * 0.35, 4.0)
+		elif replaced.is_hero() and not moving_card.is_hero():
+			# Normal card -> Hero changes the Hero's type instead of removing it.
+			# Temporarily preview the new type so the bot only spends a card when
+			# the new matchup is actually better.
+			var old_override: int = replaced.gesture_override
+			var old_hero_score: float = replaced_score
+			replaced.set_gesture_override(moving_card.get_gesture())
+			var new_hero_score: float = _score_existing_card_position(
+				state,
+				bot,
+				opponent,
+				replaced,
+				to_slot_id
 			)
-
-		# When the board is completely jammed, opening one slot is useful,
-		# but not enough by itself to justify a bad move.
-		if _get_empty_legal_slot_count(bot) == 0:
-			benefit += 1.5
+			replaced.gesture_override = old_override
+			benefit = (
+				(new_hero_score - old_hero_score) * 1.7
+				- _card_importance(moving_card) * 0.65
+				- move_mana_penalty
+			)
+		else:
+			# Ordinary Cover: the destination card is actually given up.
+			benefit -= _card_importance(replaced) * 1.25
+			if replaced_score < -4.0:
+				benefit += minf(abs(replaced_score) * 0.35, 4.0)
+			if _get_empty_legal_slot_count(bot) == 0:
+				benefit += 1.5
 
 	return benefit
+
+
+func _try_best_hero_move(
+	engine: MatchEngine,
+	state: MatchState,
+	bot: PlayerState,
+	opponent: PlayerState
+) -> bool:
+	if engine == null or state == null or bot == null or opponent == null:
+		return false
+	var hero: CardInstance = bot.hero
+	if hero == null or not hero.hero_revealed:
+		return false
+	if hero.zone != CardZone.Type.BOARD or not SlotID.is_valid(hero.current_slot):
+		return false
+	if bot.board.get_card(hero.current_slot) != hero:
+		return false
+	if hero.is_hero_rooted(state.turn_number):
+		return false
+	var hero_move_limit: int = 1
+	if hero.hero_moves_this_turn >= hero_move_limit:
+		return false
+
+	var move_cost: int = engine.get_board_move_mana_cost_for_card(bot.player_id, hero)
+	if bot.current_mana < move_cost:
+		return false
+
+	var from_slot: int = hero.current_slot
+	var current_risk: float = _hero_immediate_risk(
+		state, bot, opponent, hero, from_slot
+	)
+	var best_to: int = -1
+	var best_improvement: float = 2.5 if current_risk <= 0.0 else 0.25
+
+	for to_slot: int in SlotID.all_slots():
+		if not _is_legal_move_candidate(state, bot, hero, from_slot, to_slot):
+			continue
+		var improvement: float = _calculate_move_net_benefit(
+			state, bot, opponent, hero, from_slot, to_slot
+		)
+		var destination_card: CardInstance = bot.board.get_card(to_slot)
+		var destination_risk: float = 0.0
+		if destination_card == null:
+			destination_risk = _hero_immediate_risk(
+				state, bot, opponent, hero, to_slot
+			)
+		# On an occupied valid Cover target the Hero uses ordinary Cover and the
+		# card underneath is sacrificed.
+		improvement += (current_risk - destination_risk) * 1.25
+		if improvement > best_improvement:
+			best_improvement = improvement
+			best_to = to_slot
+
+	if best_to == -1:
+		return false
+
+	var moved: bool = engine.move_board_card(bot.player_id, from_slot, best_to)
+	if moved:
+		print(
+			"BOT HERO MOVE | hero=",
+			hero.definition.display_name,
+			" | from=",
+			from_slot,
+			" | to=",
+			best_to,
+			" | improvement=",
+			best_improvement
+		)
+	return moved
 
 
 func _try_best_strategic_move(
@@ -1688,12 +2219,6 @@ func _try_best_strategic_move(
 	opponent: PlayerState
 ) -> bool:
 	if engine == null or state == null or bot == null:
-		return false
-
-	if bot.current_mana < engine.get_board_move_mana_cost():
-		return false
-
-	if bot.board_move_used_turn == state.turn_number:
 		return false
 
 	var best_from: int = -1
@@ -1710,6 +2235,16 @@ func _try_best_strategic_move(
 		if (
 			moving_card == null
 			or moving_card.definition == null
+		):
+			continue
+		if (
+			bot.board_move_used_turn == state.turn_number
+			and not moving_card.is_hero()
+		):
+			continue
+		if bot.current_mana < engine.get_board_move_mana_cost_for_card(
+			bot.player_id,
+			moving_card
 		):
 			continue
 
@@ -1766,12 +2301,6 @@ func _try_reposition_disabled_card(
 	bot: PlayerState,
 	opponent: PlayerState
 ) -> bool:
-	if bot.current_mana < engine.get_board_move_mana_cost():
-		return false
-
-	if bot.board_move_used_turn == state.turn_number:
-		return false
-
 	var best_from: int = -1
 	var best_to: int = -1
 	var best_improvement: float = STRATEGIC_MOVE_MIN_IMPROVEMENT
@@ -1781,6 +2310,16 @@ func _try_reposition_disabled_card(
 			bot.board.get_card(from_slot_id)
 
 		if moving_card == null or moving_card.definition == null:
+			continue
+		if (
+			bot.board_move_used_turn == state.turn_number
+			and not moving_card.is_hero()
+		):
+			continue
+		if bot.current_mana < engine.get_board_move_mana_cost_for_card(
+			bot.player_id,
+			moving_card
+		):
 			continue
 
 		if not _is_card_disabled_for_bot_view(
@@ -2196,49 +2735,40 @@ func _is_legal_move_candidate(
 	from_slot_id: int,
 	to_slot_id: int
 ) -> bool:
+	if state == null or bot == null or moving_card == null:
+		return false
 	if from_slot_id == to_slot_id:
 		return false
-
-	if not SlotID.is_valid(from_slot_id):
+	if not SlotID.is_valid(from_slot_id) or not SlotID.is_valid(to_slot_id):
+		return false
+	if bot.board.get_card(from_slot_id) != moving_card:
 		return false
 
-	if not SlotID.is_valid(to_slot_id):
+	if moving_card.is_hero():
+		if not moving_card.hero_revealed:
+			return false
+		if moving_card.is_hero_rooted(state.turn_number):
+			return false
+		if moving_card.hero_moves_this_turn >= 1:
+			return false
+	elif bot.board_move_used_turn == state.turn_number:
 		return false
 
-	var matching_back: int = \
-		_get_matching_back_slot(from_slot_id)
-
-	if (
-		matching_back != -1
-		and bot.board.get_card(matching_back) != null
-	):
-		return false
-
-	var required_front: int = \
-		_get_required_front_slot(to_slot_id)
-
+	var required_front: int = _get_required_front_slot(to_slot_id)
 	if required_front != -1:
 		if from_slot_id == required_front:
 			return false
-
 		if bot.board.get_card(required_front) == null:
 			return false
 
-	var replaced: CardInstance = \
-		bot.board.get_card(to_slot_id)
-
+	var replaced: CardInstance = bot.board.get_card(to_slot_id)
 	if replaced == null:
 		return true
-
 	if replaced.definition == null:
 		return false
 
-	var turns_since_played: int = (
-		state.turn_number
-		- replaced.turn_played
-	)
-
-	if turns_since_played < 2:
+	var turns_since_played: int = state.turn_number - replaced.turn_played
+	if turns_since_played < 1:
 		return false
 
 	return CardGesture.can_cover(
@@ -2342,6 +2872,9 @@ func _count_collector_targets(
 		if target.definition == null:
 			continue
 
+		if target.is_hero():
+			continue
+
 		if target.turn_played >= state.turn_number:
 			continue
 
@@ -2395,8 +2928,16 @@ func _card_importance(card: CardInstance) -> float:
 		return 0.0
 
 	var value: float = float(
-		card.definition.mana_cost
+		card.get_mana_cost()
 	)
+
+	if card.is_hero():
+		# Heroes matter, but they should not dominate the whole plan. The bot's
+		# first priority remains winning useful clashes across the board; Hero
+		# pressure is an opportunistic bonus, especially when shields are gone.
+		value += 6.0
+		if card.shield_count <= 0:
+			value += 8.0
 
 	var behavior: CardBehavior = \
 		card.definition.behavior
@@ -2508,9 +3049,10 @@ func _score_dealer_pvp_consequence(
 
 		known_targets += 1
 
-		var outcome: int = _compare_gestures(
-			card.get_gesture(),
-			target.get_gesture()
+		var outcome: int = _predict_pvp_outcome(
+			state,
+			card,
+			target
 		)
 
 		if outcome == BattleAct.Outcome.LOSS:
@@ -2646,6 +3188,45 @@ func _get_matching_back_slot(
 			return SlotID.Type.BACK_RIGHT
 
 	return -1
+
+
+func _predict_pvp_outcome(
+	state: MatchState,
+	attacker: CardInstance,
+	defender: CardInstance
+) -> int:
+	if attacker == null or defender == null:
+		return BattleAct.Outcome.TIE
+
+	var outcome: int = _compare_gestures(
+		attacker.get_gesture(),
+		defender.get_gesture()
+	)
+
+
+	# Rostam Sleep: only a would-be win is neutralized.
+	if state != null:
+		if outcome == BattleAct.Outcome.WIN and attacker.is_hero_sleeping(state.turn_number):
+			return BattleAct.Outcome.TIE
+		if outcome == BattleAct.Outcome.LOSS and defender.is_hero_sleeping(state.turn_number):
+			return BattleAct.Outcome.TIE
+
+	# Hero/Defense shields absorb incoming hits. Rostam Fury counts as two hits,
+	# so one remaining shield does not fully neutralize a Fury win.
+	if outcome == BattleAct.Outcome.WIN:
+		var hits: int = 1
+		if state != null and attacker.is_hero_furious(state.turn_number):
+			hits = 2
+		if defender.shield_count >= hits:
+			return BattleAct.Outcome.TIE
+	elif outcome == BattleAct.Outcome.LOSS:
+		var incoming_hits: int = 1
+		if state != null and defender.is_hero_furious(state.turn_number):
+			incoming_hits = 2
+		if attacker.shield_count >= incoming_hits:
+			return BattleAct.Outcome.TIE
+
+	return outcome
 
 
 func _compare_gestures(

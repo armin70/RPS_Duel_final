@@ -192,6 +192,10 @@ static func board_to_reserve(
 
 	if card == null:
 		return null
+	if card.is_hero():
+		# Persistent Heroes never enter the normal deck cycle.
+		player.board.place_card(slot_id, card)
+		return null
 
 	card.zone = CardZone.Type.RESERVE
 	card.current_slot = CardInstance.NO_SLOT
@@ -228,6 +232,9 @@ static func board_to_removed(
 	var card: CardInstance = player.board.remove_card(slot_id)
 
 	if card == null:
+		return null
+	if card.is_hero():
+		player.board.place_card(slot_id, card)
 		return null
 
 	card.zone = CardZone.Type.REMOVED
