@@ -253,7 +253,9 @@ var hero_power_control: HeroPowerControl
 var hero_energy_control: HeroEnergyControl
 var hero_setup_waiting: bool = false
 var hero_setup_definition: HeroDefinition
+var hero_setup_opponent_definition: HeroDefinition
 var hero_setup_slot_id: int = -1
+var hero_opponent_selection_waiting: bool = false
 var hero_ground_selection_active: bool = false
 var hero_slot_highlight_places: Array[CardPlace3D] = []
 
@@ -362,18 +364,24 @@ func _ensure_hero_selection_control() -> void:
 
 
 func _on_hero_chosen(hero_definition: HeroDefinition) -> void:
-	if not hero_setup_waiting:
-		return
 	if hero_definition == null:
 		return
 
-	hero_setup_definition = hero_definition
-	hero_setup_slot_id = -1
-	hero_ground_selection_active = true
-	interaction_locked = true
-	if is_instance_valid(hero_selection_control):
-		hero_selection_control.show_ground_instruction(hero_definition)
-	_show_hero_slot_highlights()
+	if hero_setup_waiting:
+		hero_setup_definition = hero_definition
+		hero_setup_slot_id = -1
+		hero_ground_selection_active = true
+		interaction_locked = true
+		if is_instance_valid(hero_selection_control):
+			hero_selection_control.show_ground_instruction(hero_definition)
+		_show_hero_slot_highlights()
+		return
+
+	# Playtest helper: choose the opponent Hero manually too. The same Hero
+	# may be selected for both players.
+	if hero_opponent_selection_waiting:
+		hero_setup_opponent_definition = hero_definition
+		hero_opponent_selection_waiting = false
 
 
 func _show_hero_slot_highlights() -> void:
@@ -462,10 +470,16 @@ func _setup_match_heroes() -> void:
 		return
 
 	hero_setup_definition = null
+	hero_setup_opponent_definition = null
 	hero_setup_slot_id = -1
 	hero_setup_waiting = true
+	hero_opponent_selection_waiting = false
 	hero_ground_selection_active = false
-	hero_selection_control.configure(_get_available_heroes())
+	hero_selection_control.configure(
+		_get_available_heroes(),
+		"هیروی خودت را انتخاب کن",
+		"یکی از هیروها را انتخاب کن؛ بعد جای شروعش را روی زمین تعیین می‌کنی."
+	)
 
 	while hero_setup_waiting:
 		await get_tree().process_frame
@@ -484,20 +498,20 @@ func _setup_match_heroes() -> void:
 	if local_hero != null:
 		local_hero.hero_revealed = true
 
-	# Random among the two Heroes the player did NOT choose. This is not a
-	# counter-pick system; R/P/S advantage is intentionally ignored here.
-	var bot_hero_choices: Array[HeroDefinition] = []
-	for candidate: HeroDefinition in _get_available_heroes():
-		if candidate == null:
-			continue
-		if candidate.card_id == hero_setup_definition.card_id:
-			continue
-		bot_hero_choices.append(candidate)
+	# For the current playtest, choose the opponent Hero manually after the
+	# local Hero has been placed. Repeated Heroes are allowed intentionally.
+	hero_opponent_selection_waiting = true
+	hero_selection_control.configure(
+		_get_available_heroes(),
+		"هیروی حریف را انتخاب کن",
+		"برای تست، هر هیرویی را می‌توانی انتخاب کنی؛ حتی همان هیروی خودت."
+	)
+	while hero_opponent_selection_waiting:
+		await get_tree().process_frame
 
-	var bot_hero: HeroDefinition = null
-	if not bot_hero_choices.is_empty():
-		bot_hero_choices.shuffle()
-		bot_hero = bot_hero_choices[0]
+	var bot_hero: HeroDefinition = hero_setup_opponent_definition
+	if bot_hero == null:
+		return
 
 	var bot_slots: Array[int] = []
 	var bot_player: PlayerState = state.get_player(bot_player_id)

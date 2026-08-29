@@ -9,6 +9,8 @@ var selected_hero: HeroDefinition
 var root: Control
 var dim: ColorRect
 var selection_panel: PanelContainer
+var selection_title_label: Label
+var selection_subtitle_label: Label
 var hero_row: HBoxContainer
 var ground_hint_panel: PanelContainer
 var ground_hint_label: Label
@@ -21,10 +23,16 @@ func _ready() -> void:
 	_build_ui()
 
 
-func configure(hero_definitions: Array[HeroDefinition]) -> void:
+func configure(
+	hero_definitions: Array[HeroDefinition],
+	title_text: String = "هیروت را انتخاب کن",
+	subtitle_text: String = "تصویر، تایپ و اکتیو هر هیرو را قبل از انتخاب ببین."
+) -> void:
 	heroes = hero_definitions
 	if not is_node_ready():
 		await ready
+	selection_title_label.text = title_text
+	selection_subtitle_label.text = subtitle_text
 	_show_selection_mode()
 	_rebuild_hero_cards()
 
@@ -80,17 +88,17 @@ func _build_ui() -> void:
 	outer_box.add_theme_constant_override("separation", 18)
 	selection_panel.add_child(outer_box)
 
-	var title := Label.new()
-	title.text = "هیروت را انتخاب کن"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 34)
-	outer_box.add_child(title)
+	selection_title_label = Label.new()
+	selection_title_label.text = "هیروت را انتخاب کن"
+	selection_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	selection_title_label.add_theme_font_size_override("font_size", 34)
+	outer_box.add_child(selection_title_label)
 
-	var subtitle := Label.new()
-	subtitle.text = "تصویر، تایپ، قدرت پسیو و اکتیو هر هیرو را قبل از انتخاب ببین."
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 19)
-	outer_box.add_child(subtitle)
+	selection_subtitle_label = Label.new()
+	selection_subtitle_label.text = "تصویر، تایپ و اکتیو هر هیرو را قبل از انتخاب ببین."
+	selection_subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	selection_subtitle_label.add_theme_font_size_override("font_size", 19)
+	outer_box.add_child(selection_subtitle_label)
 
 	hero_row = HBoxContainer.new()
 	hero_row.alignment = BoxContainer.ALIGNMENT_CENTER
