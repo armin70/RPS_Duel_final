@@ -31,6 +31,17 @@ func modify_battle_outcome(
 	return current_outcome
 
 
+# Called once after a battle act has been fully resolved and its final
+# outcome/points have been applied. Stateful cards use this to react to wins.
+func on_battle_resolved(
+	_context: CardBehaviorContext,
+	_outcome: int,
+	_opponent_card: CardInstance,
+	_act_type: int
+) -> void:
+	pass
+
+
 # آیا این کارت، کارت Player مقابل را پس از برد حذف می‌کند؟
 func destroys_defeated_player_card() -> bool:
 	return false

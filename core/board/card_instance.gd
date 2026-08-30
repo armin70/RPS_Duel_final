@@ -46,6 +46,24 @@ var hero_guard_turn: int = -1
 # Rush transformation is per CardInstance. Never mutate CardDefinition.gesture,
 # because the same Resource is shared by every copy of that card.
 var gesture_override: int = -1
+
+# Runtime state for the new special-card families.
+# These live on CardInstance so shared CardDefinition resources are never mutated.
+var rooted_by_card_turn: int = -1
+var debuffed_no_win_turn: int = -1
+var op_healer_charges: int = 0
+var mommy_triggered_turn: int = -1
+var martyr_triggered_turn: int = -1
+var temporary_spawn_expire_turn: int = -1
+
+func is_rooted_by_card(turn_number: int) -> bool:
+	return rooted_by_card_turn == turn_number
+
+func cannot_win_due_to_debuffer(turn_number: int) -> bool:
+	return debuffed_no_win_turn == turn_number
+
+func is_temporary_spawn() -> bool:
+	return temporary_spawn_expire_turn >= 0
 func _init(
 	new_instance_id: int,
 	new_definition: CardDefinition,
@@ -150,6 +168,12 @@ func reset_for_board_entry() -> void:
 
 	# وضعیت‌های موقت Combat قبلی پاک می‌شوند.
 	disabled_combat_turn = -1
+	rooted_by_card_turn = -1
+	debuffed_no_win_turn = -1
+	op_healer_charges = 0
+	mommy_triggered_turn = -1
+	martyr_triggered_turn = -1
+	temporary_spawn_expire_turn = -1
 
 	# شیلدهای قبلی نباید بعد از Discard باقی بمانند.
 	shield_count = 0

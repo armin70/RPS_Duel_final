@@ -1772,9 +1772,14 @@ func _score_against_dealer(
 				outcome = BattleAct.Outcome.WIN
 
 		elif card.definition.behavior is ChainsawBehavior:
+			# Chainsaw turns both its normal WIN and TIE into WIN; only the
+			# Gesture that normally beats this card remains immune.
 			if (
-				dealer_card.get_gesture()
-				!= CardGesture.Type.ROCK
+				_compare_gestures(
+					card.get_gesture(),
+					dealer_card.get_gesture()
+				)
+				!= BattleAct.Outcome.LOSS
 			):
 				outcome = BattleAct.Outcome.WIN
 
@@ -1865,7 +1870,7 @@ func _score_special_behavior(
 		return -18.0
 
 	if behavior is ChainsawBehavior:
-		var non_rock_dealers: int = 0
+		var defeated_dealers: int = 0
 
 		for dealer_slot_id: int in DealerSlotID.all_slots():
 			var dealer_card: CardInstance = \
@@ -1881,12 +1886,57 @@ func _score_special_behavior(
 				continue
 
 			if (
-				dealer_card.get_gesture()
-				!= CardGesture.Type.ROCK
+				_compare_gestures(
+					card.get_gesture(),
+					dealer_card.get_gesture()
+				)
+				!= BattleAct.Outcome.LOSS
 			):
-				non_rock_dealers += 1
+				defeated_dealers += 1
 
-		return float(non_rock_dealers) * 5.0
+		return float(defeated_dealers) * 5.0
+
+	if behavior is RootOpponentBehavior:
+		var root_target: CardInstance = _get_visible_opponent_card(
+			state, opponent, slot_id
+		)
+		if root_target == null:
+			return -3.0
+		if root_target.is_hero() and not (behavior as RootOpponentBehavior).affects_heroes:
+			return -5.0
+		return 6.0 + _card_importance(root_target) * 0.7
+
+	if behavior is BFGBehavior:
+		var bfg_bonus: float = 5.0
+		var bfg_target := _get_visible_opponent_card(state, opponent, slot_id)
+		if bfg_target != null:
+			var outcome := _compare_gestures(card.get_gesture(), bfg_target.get_gesture())
+			if outcome == BattleAct.Outcome.WIN:
+				bfg_bonus += 12.0
+		return bfg_bonus
+
+	if behavior is TauntBehavior:
+		# Taunt is valuable when this card is not a terrible matchup and can soak
+		# pressure away from the rest of the column. Avoid over-prioritizing it.
+		return 5.0 + float(card.shield_count) * 2.0
+
+	if behavior is MommyBehavior:
+		return 7.0
+
+	if behavior is KamikazeBehavior:
+		var kamikaze_enemy := _get_visible_opponent_card(state, opponent, slot_id)
+		if kamikaze_enemy != null:
+			return 4.0 + _card_importance(kamikaze_enemy) * 0.45
+		return 1.0
+
+	if behavior is MartyrHealerBehavior:
+		return 5.0
+
+	if behavior is DebufferBehavior:
+		return 6.0
+
+	if behavior is OPHealerBehavior:
+		return 16.0
 
 	if behavior is FrontShieldBehavior:
 		if SlotID.get_row(slot_id) != SlotID.Row.BACK:
@@ -2713,8 +2763,11 @@ func _target_has_a_real_win(
 
 		elif target.definition.behavior is ChainsawBehavior:
 			if (
-				dealer_card.get_gesture()
-				!= CardGesture.Type.ROCK
+				_compare_gestures(
+					target.get_gesture(),
+					dealer_card.get_gesture()
+				)
+				!= BattleAct.Outcome.LOSS
 			):
 				outcome = BattleAct.Outcome.WIN
 
@@ -2742,6 +2795,8 @@ func _is_legal_move_candidate(
 	if not SlotID.is_valid(from_slot_id) or not SlotID.is_valid(to_slot_id):
 		return false
 	if bot.board.get_card(from_slot_id) != moving_card:
+		return false
+	if moving_card.is_rooted_by_card(state.turn_number):
 		return false
 
 	if moving_card.is_hero():
@@ -2914,10 +2969,7 @@ func _count_other_rocks_for_view(
 		if card.definition == null:
 			continue
 
-		if (
-			card.get_gesture()
-			== CardGesture.Type.ROCK
-		):
+		if card.get_gesture() == source_card.get_gesture():
 			count += 1
 
 	return count
@@ -2960,6 +3012,22 @@ func _card_importance(card: CardInstance) -> float:
 		value += 4.0
 	elif behavior is DiscardLaneDrawBehavior:
 		value += 3.0
+	elif behavior is BFGBehavior:
+		value += 8.0
+	elif behavior is TauntBehavior:
+		value += 6.0
+	elif behavior is OPHealerBehavior:
+		value += 10.0
+	elif behavior is DebufferBehavior:
+		value += 5.0
+	elif behavior is RootOpponentBehavior:
+		value += 5.0
+	elif behavior is KamikazeBehavior:
+		value += 5.0
+	elif behavior is MommyBehavior:
+		value += 5.0
+	elif behavior is MartyrHealerBehavior:
+		value += 4.0
 
 	if card.get_gesture() == CardGesture.Type.DIV:
 		value += 12.0

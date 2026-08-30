@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bm4tof26gxhw2"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_def"]
+[ext_resource type="Script" uid="uid://dyb7karb56da6" path="res://core/cards/behaviors/mustache_rock_behavior.gd" id="2_behavior"]
+[ext_resource type="Texture2D" uid="uid://x8cswiehekej" path="res://art/cards/salitegheichi.png" id="3_516kh"]
+[ext_resource type="Resource" uid="uid://36db8uetptw0" path="res://data/vfx/mustache_dealer_vfx.tres" id="5_vfx"]
+
+[sub_resource type="Resource" id="Behavior"]
+script = ExtResource("2_behavior")
+
+[resource]
+script = ExtResource("1_def")
+card_id = &"mustache_scissors"
+display_name = "Mustache Scissors"
+gesture = 2
+mana_cost = 4
+rarity = 1
+front_texture = ExtResource("3_516kh")
+ability_vfx = ExtResource("5_vfx")
+behavior = SubResource("Behavior")

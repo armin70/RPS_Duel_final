@@ -6172,6 +6172,7 @@ func _refresh_board_shield_visuals(
 			)
 			continue
 
+		card_view.refresh_front_visual()
 		card_view.set_shield_count(
 			card.shield_count,
 			animate_change

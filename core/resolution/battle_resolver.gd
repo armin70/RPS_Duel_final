@@ -58,6 +58,11 @@ static func build_sequence(
 		DealerSlotID.Type.RIGHT
 	)
 
+	# Build all PvP clashes after Dealer attacks so Taunt can redirect targets
+	# BEFORE any clash mutates shields/charges. BFG then expands real wins.
+	_add_all_player_pvp_clashes(state, sequence)
+	_append_bfg_column_wins(state, sequence)
+
 	return sequence
 static func _create_player_vs_dealer_act(
 	state: MatchState,
@@ -109,6 +114,19 @@ static func _create_player_vs_dealer_act(
 
 	if player_card_is_disabled and outcome == BattleAct.Outcome.WIN:
 		outcome = BattleAct.Outcome.TIE
+
+	# Debuffer from the previous turn downgrades any would-be win to a tie.
+	if (
+		outcome == BattleAct.Outcome.WIN
+		and player_card.cannot_win_due_to_debuffer(state.turn_number)
+	):
+		outcome = BattleAct.Outcome.TIE
+
+	# A global OP Healer charge can turn any friendly LOSS into a TIE.
+	if outcome == BattleAct.Outcome.LOSS:
+		outcome = OPHealerBehavior.try_prevent_loss(
+			state, player_id, player_card, outcome
+		)
 
 	if outcome == BattleAct.Outcome.WIN:
 		var hit_count: int = _get_winning_hit_count(state, player_card)
@@ -215,6 +233,38 @@ static func _create_player_vs_player_act(
 	):
 		player_one_outcome = BattleAct.Outcome.TIE
 		player_two_outcome = BattleAct.Outcome.TIE
+
+	# Debuffer status belongs to the defeated CardInstance and lasts for the
+	# following turn: a would-be win is converted to a tie.
+	if (
+		player_one_outcome == BattleAct.Outcome.WIN
+		and player_one_card.cannot_win_due_to_debuffer(state.turn_number)
+	):
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+	if (
+		player_two_outcome == BattleAct.Outcome.WIN
+		and player_two_card.cannot_win_due_to_debuffer(state.turn_number)
+	):
+		player_one_outcome = BattleAct.Outcome.TIE
+		player_two_outcome = BattleAct.Outcome.TIE
+
+	# OP Healer is a global five-charge safety net. Only one side can be losing
+	# in a normal RPS clash, so the first successful prevention neutralizes it.
+	if player_one_outcome == BattleAct.Outcome.LOSS:
+		var healed_one: int = OPHealerBehavior.try_prevent_loss(
+			state, 1, player_one_card, player_one_outcome
+		)
+		if healed_one == BattleAct.Outcome.TIE:
+			player_one_outcome = BattleAct.Outcome.TIE
+			player_two_outcome = BattleAct.Outcome.TIE
+	elif player_two_outcome == BattleAct.Outcome.LOSS:
+		var healed_two: int = OPHealerBehavior.try_prevent_loss(
+			state, 2, player_two_card, player_two_outcome
+		)
+		if healed_two == BattleAct.Outcome.TIE:
+			player_one_outcome = BattleAct.Outcome.TIE
+			player_two_outcome = BattleAct.Outcome.TIE
 
 	# A Fury winner lands two attacks. Shields absorb hits one-by-one; any hit
 	# that remains after the shield reaches zero is an exposed Hero hit.
@@ -511,7 +561,7 @@ static func _add_dealer_attacks(
 		return
 
 # اره‌برقی دیگر برای هر کارت Dealer یک Act جدا نمی‌سازد.
-# فقط یک Act می‌سازد و امتیاز کارت‌های غیر ROCK را یک‌جا می‌دهد.
+# فقط یک Act می‌سازد و امتیاز Dealerهایی که Counter مستقیمش نیستند را یک‌جا می‌دهد.
 	if (
 		attack_type
 		== CardBehavior.DealerAttackType.CHAINSAW_SWEEP
@@ -531,10 +581,15 @@ static func _add_dealer_attacks(
 			if dealer_card.definition == null:
 				continue
 
-			# اره‌برقی کارت ROCK را نمی‌برد.
+			# Chainsaw هر Dealer را می‌برد به‌جز Gestureای که در RPS
+			# به Gesture خود Chainsaw می‌برد. مثال:
+			# Scissors -> به‌جز Rock / Paper -> به‌جز Scissors / Rock -> به‌جز Paper.
 			if (
-				dealer_card.get_gesture()
-				== CardGesture.Type.ROCK
+				_compare_gestures(
+					player_card.get_gesture(),
+					dealer_card.get_gesture()
+				)
+				== BattleAct.Outcome.LOSS
 			):
 				continue
 
@@ -638,20 +693,6 @@ static func _add_side_lane_sequence(
 			normal_targets
 		)
 
-	# مبارزه Player 1 و Player 2 با یکدیگر
-	if (
-		player_one_card != null
-		and player_two_card != null
-	):
-		sequence.add_act(
-			_create_player_vs_player_act(
-				state,
-				player_one_card,
-				player_two_card,
-				player_slot_id,
-				player_slot_id
-			)
-		)
 static func _add_middle_row_sequence(
 	state: MatchState,
 	sequence: BattleSequence,
@@ -701,35 +742,234 @@ static func _add_middle_row_sequence(
 				normal_middle_targets
 			)
 
-	# Clash کارت‌های وسط دو بازیکن
-	for player_one_slot_id: int in middle_player_slots:
-		var player_one_card: CardInstance = \
-			state.player_one.board.get_card(
-				player_one_slot_id
-			)
+static func _column_slots_for(slot_id: int) -> Array[int]:
+	match slot_id:
+		SlotID.Type.FRONT_LEFT, SlotID.Type.BACK_LEFT:
+			return [SlotID.Type.FRONT_LEFT, SlotID.Type.BACK_LEFT]
+		SlotID.Type.FRONT_MIDDLE_0, SlotID.Type.BACK_MIDDLE_0:
+			return [SlotID.Type.FRONT_MIDDLE_0, SlotID.Type.BACK_MIDDLE_0]
+		SlotID.Type.FRONT_MIDDLE_1, SlotID.Type.BACK_MIDDLE_1:
+			return [SlotID.Type.FRONT_MIDDLE_1, SlotID.Type.BACK_MIDDLE_1]
+		SlotID.Type.FRONT_RIGHT, SlotID.Type.BACK_RIGHT:
+			return [SlotID.Type.FRONT_RIGHT, SlotID.Type.BACK_RIGHT]
+	return []
 
-		if player_one_card == null:
+
+static func _pair_key(card_a: CardInstance, card_b: CardInstance) -> String:
+	if card_a == null or card_b == null:
+		return ""
+	var low: int = mini(card_a.instance_id, card_b.instance_id)
+	var high: int = maxi(card_a.instance_id, card_b.instance_id)
+	return str(low) + ":" + str(high)
+
+
+static func _existing_pvp_pairs(sequence: BattleSequence) -> Dictionary:
+	var pairs: Dictionary = {}
+	if sequence == null:
+		return pairs
+	for act: BattleAct in sequence.acts:
+		if act == null or act.type != BattleAct.Type.PLAYER_VS_PLAYER:
 			continue
+		var key: String = _pair_key(act.attacker, act.defender)
+		if not key.is_empty():
+			pairs[key] = true
+	return pairs
 
-		for player_two_slot_id: int in middle_player_slots:
-			var player_two_card: CardInstance = \
-				state.player_two.board.get_card(
-					player_two_slot_id
-				)
 
-			if player_two_card == null:
+static func _lane_taunt(player: PlayerState, lane: int) -> Dictionary:
+	if player == null:
+		return {}
+	for slot_id: int in SlotID.all_slots():
+		if SlotID.get_lane(slot_id) != lane:
+			continue
+		var card: CardInstance = player.board.get_card(slot_id)
+		if card == null or card.definition == null:
+			continue
+		if card.definition.behavior is TauntBehavior:
+			return {"card": card, "slot": slot_id}
+	return {}
+
+
+static func _normal_pvp_target_slots(source_slot: int) -> Array[int]:
+	# Side lanes fight the exact opposing slot. Middle cards preserve the game's
+	# existing all-to-all rule inside their own front/back middle row.
+	if source_slot in [
+		SlotID.Type.FRONT_LEFT,
+		SlotID.Type.BACK_LEFT,
+		SlotID.Type.FRONT_RIGHT,
+		SlotID.Type.BACK_RIGHT
+	]:
+		return [source_slot]
+	if source_slot in [
+		SlotID.Type.FRONT_MIDDLE_0,
+		SlotID.Type.FRONT_MIDDLE_1
+	]:
+		return [SlotID.Type.FRONT_MIDDLE_0, SlotID.Type.FRONT_MIDDLE_1]
+	if source_slot in [
+		SlotID.Type.BACK_MIDDLE_0,
+		SlotID.Type.BACK_MIDDLE_1
+	]:
+		return [SlotID.Type.BACK_MIDDLE_0, SlotID.Type.BACK_MIDDLE_1]
+	return []
+
+
+static func _add_all_player_pvp_clashes(state: MatchState, sequence: BattleSequence) -> void:
+	if state == null or sequence == null:
+		return
+	var pairs: Dictionary = {}
+
+	# Every Player 1 card chooses its normal targets unless a Taunt exists in
+	# the opposing lane, in which case it can attack only that Taunt.
+	for source_slot: int in SlotID.all_slots():
+		var p1_card: CardInstance = state.player_one.board.get_card(source_slot)
+		if p1_card == null:
+			continue
+		var lane: int = SlotID.get_lane(source_slot)
+		var taunt_info: Dictionary = _lane_taunt(state.player_two, lane)
+		var target_slots: Array[int] = []
+		if not taunt_info.is_empty():
+			target_slots.append(int(taunt_info.get("slot", -1)))
+		else:
+			target_slots = _normal_pvp_target_slots(source_slot)
+		for target_slot: int in target_slots:
+			var p2_card: CardInstance = state.player_two.board.get_card(target_slot)
+			if p2_card == null:
 				continue
+			var key: String = _pair_key(p1_card, p2_card)
+			if pairs.has(key):
+				continue
+			sequence.add_act(_create_player_vs_player_act(
+				state, p1_card, p2_card, source_slot, target_slot
+			))
+			pairs[key] = true
 
-			sequence.add_act(
-				_create_player_vs_player_act(
-					state,
-					player_one_card,
-					player_two_card,
-					player_one_slot_id,
-					player_two_slot_id
-				)
-			)
-			
+	# Symmetric pass: Player 2 cards also obey Player 1 Taunts. Pair de-duping
+	# prevents normal clashes from being added twice.
+	for p2_source_slot: int in SlotID.all_slots():
+		var p2_card: CardInstance = state.player_two.board.get_card(p2_source_slot)
+		if p2_card == null:
+			continue
+		var p2_lane: int = SlotID.get_lane(p2_source_slot)
+		var p2_taunt_info: Dictionary = _lane_taunt(state.player_one, p2_lane)
+		var p2_target_slots: Array[int] = []
+		if not p2_taunt_info.is_empty():
+			p2_target_slots.append(int(p2_taunt_info.get("slot", -1)))
+		else:
+			p2_target_slots = _normal_pvp_target_slots(p2_source_slot)
+		for p2_target_slot: int in p2_target_slots:
+			var target_p1_card: CardInstance = state.player_one.board.get_card(p2_target_slot)
+			if target_p1_card == null:
+				continue
+			var p2_pair_key: String = _pair_key(target_p1_card, p2_card)
+			if pairs.has(p2_pair_key):
+				continue
+			sequence.add_act(_create_player_vs_player_act(
+				state, target_p1_card, p2_card, p2_target_slot, p2_source_slot
+			))
+			pairs[p2_pair_key] = true
+
+
+static func _append_bfg_column_wins(state: MatchState, sequence: BattleSequence) -> void:
+	if state == null or sequence == null or state.rush_mode_enabled:
+		return
+	var pairs: Dictionary = _existing_pvp_pairs(sequence)
+	var snapshot: Array[BattleAct] = []
+	snapshot.assign(sequence.acts)
+	for act: BattleAct in snapshot:
+		if act == null or act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+			continue
+		var winner: CardInstance = null
+		var winner_slot: int = -1
+		var loser_owner_id: int = 0
+		if (
+			act.attacker_outcome == BattleAct.Outcome.WIN
+			and act.attacker != null
+			and act.attacker.definition != null
+			and act.attacker.definition.behavior is BFGBehavior
+		):
+			winner = act.attacker
+			winner_slot = act.attacker_slot_id
+			loser_owner_id = act.defender_owner_id
+		elif (
+			act.defender_outcome == BattleAct.Outcome.WIN
+			and act.defender != null
+			and act.defender.definition != null
+			and act.defender.definition.behavior is BFGBehavior
+		):
+			winner = act.defender
+			winner_slot = act.defender_slot_id
+			loser_owner_id = act.attacker_owner_id
+		if winner == null or loser_owner_id not in [1, 2]:
+			continue
+		var enemy: PlayerState = state.get_player(loser_owner_id)
+		if enemy == null:
+			continue
+		for enemy_slot: int in _column_slots_for(winner_slot):
+			var target: CardInstance = enemy.board.get_card(enemy_slot)
+			if target == null:
+				continue
+			var key: String = _pair_key(winner, target)
+			if pairs.has(key):
+				continue
+			sequence.add_act(_create_forced_pvp_win_act(
+				state, winner, target, winner_slot, enemy_slot
+			))
+			pairs[key] = true
+
+
+static func _create_forced_pvp_win_act(
+	state: MatchState,
+	winner: CardInstance,
+	loser: CardInstance,
+	winner_slot: int,
+	loser_slot: int
+) -> BattleAct:
+	var act := BattleAct.new()
+	act.type = BattleAct.Type.PLAYER_VS_PLAYER
+	var loser_outcome: int = BattleAct.Outcome.LOSS
+	loser_outcome = OPHealerBehavior.try_prevent_loss(
+		state, loser.owner_id, loser, loser_outcome
+	)
+	var winner_outcome: int = _opposite_outcome(loser_outcome)
+	var hit_result: Dictionary = {}
+	if winner_outcome == BattleAct.Outcome.WIN:
+		hit_result = _apply_incoming_hits(loser, 1, loser_outcome, winner.is_hero())
+		loser_outcome = int(hit_result.get("outcome", loser_outcome))
+		winner_outcome = _opposite_outcome(loser_outcome)
+
+	if winner.owner_id == 1:
+		act.attacker = winner
+		act.defender = loser
+		act.attacker_owner_id = 1
+		act.defender_owner_id = 2
+		act.attacker_slot_id = winner_slot
+		act.defender_slot_id = loser_slot
+		act.attacker_outcome = winner_outcome
+		act.defender_outcome = loser_outcome
+		act.attacker_landed_hits = int(hit_result.get("landed_hits", 0))
+		act.attacker_unshielded_hero_hits = int(hit_result.get("unshielded_hero_hits", 0))
+		act.attacker_points = _hero_adjusted_points(
+			state, winner_outcome, act.attacker_landed_hits, act.attacker_unshielded_hero_hits
+		)
+		act.defender_points = _points_for_outcome(state, loser_outcome)
+	else:
+		act.attacker = loser
+		act.defender = winner
+		act.attacker_owner_id = 1
+		act.defender_owner_id = 2
+		act.attacker_slot_id = loser_slot
+		act.defender_slot_id = winner_slot
+		act.attacker_outcome = loser_outcome
+		act.defender_outcome = winner_outcome
+		act.defender_landed_hits = int(hit_result.get("landed_hits", 0))
+		act.defender_unshielded_hero_hits = int(hit_result.get("unshielded_hero_hits", 0))
+		act.attacker_points = _points_for_outcome(state, loser_outcome)
+		act.defender_points = _hero_adjusted_points(
+			state, winner_outcome, act.defender_landed_hits, act.defender_unshielded_hero_hits
+		)
+	return act
+
+
 static func _get_winning_hit_count(
 	state: MatchState,
 	winner: CardInstance

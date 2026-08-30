@@ -727,6 +727,8 @@ func can_cover_card(
 			return false
 		if player.board.get_card(card.current_slot) != card:
 			return false
+		if card.is_rooted_by_card(state.turn_number):
+			return false
 
 		if card.is_hero():
 			if not card.hero_revealed:
@@ -864,6 +866,9 @@ func move_board_card(
 
 	var moving_card: CardInstance = player.board.get_card(from_slot_id)
 	if moving_card == null or moving_card.owner_id != player_id:
+		return false
+	if moving_card.is_rooted_by_card(state.turn_number):
+		print("BOARD MOVE FAILED | card rooted by opponent effect")
 		return false
 
 	if moving_card.is_hero():
@@ -1169,6 +1174,26 @@ func apply_battle_act(
 
 	_apply_hero_health_damage_from_act(act)
 	_apply_hero_battle_metadata(act)
+
+	_run_resolved_behavior_for_side(
+		act.attacker,
+		act.attacker_owner_id,
+		act.attacker_slot_id,
+		act.attacker_outcome,
+		act.defender,
+		act.type
+	)
+
+	if act.defender_owner_id != 0:
+		_run_resolved_behavior_for_side(
+			act.defender,
+			act.defender_owner_id,
+			act.defender_slot_id,
+			act.defender_outcome,
+			act.attacker,
+			act.type
+		)
+
 	act.resolved = true
 
 	return true
@@ -1340,6 +1365,34 @@ func _get_card_behavior(
 		return null
 
 	return card.definition.behavior
+
+
+func _run_resolved_behavior_for_side(
+	card: CardInstance,
+	player_id: int,
+	slot_id: int,
+	outcome: int,
+	opponent_card: CardInstance,
+	act_type: int
+) -> void:
+	var behavior: CardBehavior = _get_card_behavior(card)
+	if behavior == null:
+		return
+
+	var context := CardBehaviorContext.new(
+		self,
+		state,
+		card,
+		player_id,
+		slot_id
+	)
+
+	behavior.on_battle_resolved(
+		context,
+		outcome,
+		opponent_card,
+		act_type
+	)
 
 
 func _card_destroys_defeated_player(
@@ -1597,6 +1650,191 @@ func _resolve_rush_pvp_losers() -> void:
 		1: [],
 		2: []
 	}
+
+
+
+func _resolve_new_special_card_results() -> void:
+	if state == null or active_battle_sequence == null:
+		return
+
+	var cards_to_remove: Array[Dictionary] = []
+	var remove_ids: Dictionary = {}
+	var mommy_spawns: Array[Dictionary] = []
+
+	for act: BattleAct in active_battle_sequence.acts:
+		if act == null or not act.resolved:
+			continue
+
+		_process_special_card_result_side(
+			act.attacker_owner_id,
+			act.attacker,
+			act.attacker_outcome,
+			act.defender_owner_id,
+			act.defender,
+			act.type,
+			cards_to_remove,
+			remove_ids,
+			mommy_spawns
+		)
+		if act.defender_owner_id in [1, 2]:
+			_process_special_card_result_side(
+				act.defender_owner_id,
+				act.defender,
+				act.defender_outcome,
+				act.attacker_owner_id,
+				act.attacker,
+				act.type,
+				cards_to_remove,
+				remove_ids,
+				mommy_spawns
+			)
+
+	# Resolve removals after every BattleAct has already animated/resolved.
+	for entry: Dictionary in cards_to_remove:
+		_send_board_card_to_reserve(
+			int(entry.get("player_id", 0)),
+			entry.get("card", null) as CardInstance,
+			String(entry.get("reason", "SPECIAL CARD REMOVED"))
+		)
+
+	# Mommy spawns happen after Kamikaze/Martyr removals, so newly-opened legal
+	# board spaces may be used. One Mommy can trigger at most once per turn.
+	for entry: Dictionary in mommy_spawns:
+		_spawn_mommy_temporary_card(
+			int(entry.get("player_id", 0)),
+			entry.get("source", null) as CardInstance
+		)
+
+
+func _process_special_card_result_side(
+	owner_id: int,
+	card: CardInstance,
+	outcome: int,
+	opponent_owner_id: int,
+	opponent_card: CardInstance,
+	act_type: int,
+	cards_to_remove: Array[Dictionary],
+	remove_ids: Dictionary,
+	mommy_spawns: Array[Dictionary]
+) -> void:
+	if owner_id not in [1, 2] or card == null or card.definition == null:
+		return
+	var behavior: CardBehavior = card.definition.behavior
+	if behavior == null:
+		return
+
+	# Mommy: any win (PvP or Dealer) creates one temporary same-type card.
+	if behavior is MommyBehavior and outcome == BattleAct.Outcome.WIN:
+		if card.mommy_triggered_turn != state.turn_number:
+			card.mommy_triggered_turn = state.turn_number
+			mommy_spawns.append({"player_id": owner_id, "source": card})
+
+	# The remaining effects explicitly refer to the opposing player's card.
+	if act_type != BattleAct.Type.PLAYER_VS_PLAYER:
+		# Martyr healer is the exception: any loss can trigger its final shield.
+		if behavior is MartyrHealerBehavior and outcome == BattleAct.Outcome.LOSS:
+			if card.martyr_triggered_turn != state.turn_number:
+				card.martyr_triggered_turn = state.turn_number
+				_grant_random_friendly_shield(owner_id, card)
+			_queue_special_remove(cards_to_remove, remove_ids, owner_id, card, "MARTYR HEALER EXPIRED")
+		return
+
+	if behavior is DebufferBehavior and outcome == BattleAct.Outcome.WIN:
+		if opponent_card != null:
+			opponent_card.debuffed_no_win_turn = state.turn_number + 1
+			print("DEBUFFER APPLIED | target=", opponent_card.definition.display_name, " | turn=", state.turn_number + 1)
+
+	if behavior is KamikazeBehavior and outcome == BattleAct.Outcome.LOSS:
+		_queue_special_remove(cards_to_remove, remove_ids, owner_id, card, "KAMIKAZE EXPIRED")
+		if opponent_owner_id in [1, 2] and opponent_card != null and not opponent_card.is_hero():
+			_queue_special_remove(cards_to_remove, remove_ids, opponent_owner_id, opponent_card, "KAMIKAZE TOOK WINNER")
+
+	if behavior is MartyrHealerBehavior and outcome == BattleAct.Outcome.LOSS:
+		if card.martyr_triggered_turn != state.turn_number:
+			card.martyr_triggered_turn = state.turn_number
+			_grant_random_friendly_shield(owner_id, card)
+		_queue_special_remove(cards_to_remove, remove_ids, owner_id, card, "MARTYR HEALER EXPIRED")
+
+
+func _queue_special_remove(
+	entries: Array[Dictionary],
+	ids: Dictionary,
+	player_id: int,
+	card: CardInstance,
+	reason: String
+) -> void:
+	if card == null or card.is_hero() or ids.has(card.instance_id):
+		return
+	ids[card.instance_id] = true
+	entries.append({"player_id": player_id, "card": card, "reason": reason})
+
+
+func _grant_random_friendly_shield(player_id: int, source: CardInstance) -> void:
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return
+	var candidates: Array[CardInstance] = []
+	for slot_id: int in SlotID.all_slots():
+		var target: CardInstance = player.board.get_card(slot_id)
+		if target == null or target == source:
+			continue
+		candidates.append(target)
+	if candidates.is_empty():
+		return
+	var chosen: CardInstance = candidates.pick_random()
+	chosen.shield_count += 1
+	print("MARTYR SHIELD | target=", chosen.definition.display_name, " | shields=", chosen.shield_count)
+
+
+func _spawn_mommy_temporary_card(player_id: int, source: CardInstance) -> void:
+	if source == null or source.definition == null:
+		return
+	var behavior := source.definition.behavior as MommyBehavior
+	if behavior == null or behavior.spawned_card == null:
+		return
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return
+	var legal_slots: Array[int] = []
+	for slot_id: int in SlotID.all_slots():
+		if not player.board.is_slot_empty(slot_id):
+			continue
+		if not _can_play_in_row_order(player, slot_id):
+			continue
+		legal_slots.append(slot_id)
+	if legal_slots.is_empty():
+		return
+	var token: CardInstance = card_factory.create_card(behavior.spawned_card, player_id)
+	var chosen_slot: int = legal_slots.pick_random()
+	if not player.board.place_card(chosen_slot, token):
+		return
+	token.turn_played = state.turn_number
+	token.temporary_spawn_expire_turn = state.turn_number + 1
+	print("MOMMY SPAWN | owner=", player_id, " | card=", token.definition.display_name, " | slot=", chosen_slot, " | expires_after_turn=", token.temporary_spawn_expire_turn)
+
+
+func _expire_temporary_spawn_cards() -> void:
+	if state == null:
+		return
+	for player_id: int in [1, 2]:
+		var player: PlayerState = state.get_player(player_id)
+		if player == null:
+			continue
+		var expired: Array[int] = []
+		for slot_id: int in SlotID.all_slots():
+			var card: CardInstance = player.board.get_card(slot_id)
+			if card == null:
+				continue
+			if card.temporary_spawn_expire_turn < 0:
+				continue
+			if state.turn_number < card.temporary_spawn_expire_turn:
+				continue
+			expired.append(slot_id)
+		for slot_id: int in expired:
+			var card: CardInstance = player.board.remove_card(slot_id)
+			if card != null:
+				card.zone = CardZone.Type.REMOVED
+				print("MOMMY TEMPORARY CARD EXPIRED | card=", card.definition.display_name)
 
 
 func _resolve_killer_cards() -> void:
@@ -1908,6 +2146,13 @@ func finish_combat() -> bool:
 		return false
 
 	state.phase = MatchPhase.Type.CLEANUP
+
+	# Temporary Mommy cards survive exactly through their following combat.
+	_expire_temporary_spawn_cards()
+
+	# Resolve the new card families only after every battle animation/result has
+	# been applied, so middle-row multi-clashes cannot invalidate references.
+	_resolve_new_special_card_results()
 
 	# Rush removes every card that lost a direct PvP clash before any normal
 	# Killer/Reserve cleanup can claim it. This is the only permanent removal.

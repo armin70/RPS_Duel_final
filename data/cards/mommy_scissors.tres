@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cxsbqv8s86w5o"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://dekstr37qsrdm" path="res://core/cards/behaviors/mommy_behavior.gd" id="2_behavior"]
+[ext_resource type="Texture2D" uid="uid://brcvrj20d2js6" path="res://art/cards/new_batch/mommy_scissors.png" id="3_art"]
+[ext_resource type="Resource" uid="uid://ovnyakbjgrc6" path="res://data/cards/normal_scissors.tres" id="4_spawn"]
+
+[sub_resource type="Resource" id="Behavior"]
+script = ExtResource("2_behavior")
+spawned_card = ExtResource("4_spawn")
+
+[resource]
+script = ExtResource("1_card")
+card_id = &"mommy_scissors"
+display_name = "Mommy Scissors"
+gesture = 2
+mana_cost = 6
+rarity = 1
+front_texture = ExtResource("3_art")
+info_image = ExtResource("3_art")
+behavior = SubResource("Behavior")

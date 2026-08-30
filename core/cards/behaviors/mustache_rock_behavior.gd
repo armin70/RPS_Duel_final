@@ -27,7 +27,8 @@ func get_dealer_attack_type(
 	# حتی اگر شرط دو Rock برقرار نباشد.
 	source_card.ability_used = true
 
-	var other_rock_count: int = 0
+	var source_gesture: CardGesture.Type = source_card.get_gesture()
+	var other_matching_count: int = 0
 
 	for slot_id: int in SlotID.all_slots():
 		var friend_card: CardInstance = \
@@ -36,27 +37,26 @@ func get_dealer_attack_type(
 		if friend_card == null:
 			continue
 
-		# خود سنگ سیبیل حساب نمی‌شود.
+		# خود کارت ویژه حساب نمی‌شود.
 		if friend_card == source_card:
 			continue
 
 		if friend_card.definition == null:
 			continue
 
-		if (
-			friend_card.get_gesture()
-			!= CardGesture.Type.ROCK
-		):
+		if friend_card.get_gesture() != source_gesture:
 			continue
 
-		other_rock_count += 1
+		other_matching_count += 1
 
 	# در اولین Attack شرط برقرار نبود:
 	# حمله معمولی انجام می‌شود و قدرت برای همیشه از بین می‌رود.
-	if other_rock_count < 2:
+	if other_matching_count < 2:
 		print(
-			"MUSTACHE ROCK FAILED | other_rocks=",
-			other_rock_count,
+			"MUSTACHE SWEEP FAILED | matching_friends=",
+			other_matching_count,
+			" | gesture=",
+			source_gesture,
 			" | ability consumed"
 		)
 
@@ -65,8 +65,10 @@ func get_dealer_attack_type(
 	# در اولین Attack شرط برقرار بود:
 	# حمله معمولی با چهار برد جایگزین می‌شود.
 	print(
-		"MUSTACHE ROCK ACTIVATED | other_rocks=",
-		other_rock_count
+		"MUSTACHE SWEEP ACTIVATED | matching_friends=",
+		other_matching_count,
+		" | gesture=",
+		source_gesture
 	)
 
 	return DealerAttackType.SWEEP_WIN

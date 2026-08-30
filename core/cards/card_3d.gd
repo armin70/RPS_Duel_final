@@ -170,6 +170,24 @@ func set_face_up(value: bool) -> void:
 	_refresh_gesture_override_label()
 
 
+func refresh_front_visual() -> void:
+	if not is_face_up:
+		return
+
+	_create_card_material()
+	if card_material == null:
+		return
+
+	if (
+		card_instance != null
+		and card_instance.definition != null
+		and card_instance.definition.front_texture != null
+	):
+		card_material.albedo_texture = card_instance.definition.front_texture
+
+	_refresh_gesture_override_label()
+
+
 func refresh_gesture_override_label() -> void:
 	_refresh_gesture_override_label()
 
