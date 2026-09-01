@@ -6,6 +6,8 @@
 [ext_resource type="Resource" path="res://data/vfx/buffer_placed.tres" id="4_vfx"]
 [ext_resource type="Resource" path="res://data/vfx/buffer_impact.tres" id="5_vfx"]
 
+[ext_resource type="Texture2D" path="res://art/card_info/new_corrected/185.jpg" id="99_info"]
+
 [sub_resource type="Resource" id="ToggleBehavior"]
 script = ExtResource("2_behavior")
 open_card_path = "res://data/cards/helmet_open_rock.tres"
@@ -19,7 +21,7 @@ gesture = 0
 mana_cost = 8
 rarity = 1
 front_texture = ExtResource("3_tex")
-info_image = ExtResource("3_tex")
+info_image = ExtResource("99_info")
 placed_vfx = ExtResource("4_vfx")
 target_vfx = ExtResource("5_vfx")
 behavior = SubResource("ToggleBehavior")

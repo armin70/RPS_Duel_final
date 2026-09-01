@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bfw62o6eg24yf"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://cegw3mrdgier3"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
 [ext_resource type="Script" uid="uid://0cmudjxlyc1y" path="res://core/cards/behaviors/op_healer_behavior.gd" id="2_behavior"]
 [ext_resource type="Texture2D" uid="uid://ct3lo2orocfwp" path="res://art/cards/new_batch/op_healer_paper.png" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://c7phua1y5rfs" path="res://art/card_info/new_corrected/166.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
@@ -15,5 +16,5 @@ gesture = 1
 mana_cost = 10
 rarity = 1
 front_texture = ExtResource("3_art")
-info_image = ExtResource("3_art")
+info_image = ExtResource("99_info")
 behavior = SubResource("Behavior")

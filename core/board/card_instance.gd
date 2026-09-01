@@ -54,7 +54,14 @@ var debuffed_no_win_turn: int = -1
 var op_healer_charges: int = 0
 var mommy_triggered_turn: int = -1
 var martyr_triggered_turn: int = -1
+# Mommy reward cards live in the NEXT hand for one turn only. If they are not
+# played before that turn ends, MatchEngine removes them permanently.
+var temporary_hand_expire_turn: int = -1
+# Legacy field kept for compatibility with any older saved/runtime objects.
 var temporary_spawn_expire_turn: int = -1
+# Deferred CardDefinition swap used by Changeling. It is applied only after the
+# whole battle phase has resolved, so multi-clash cards do not change mid-fight.
+var pending_definition_path: String = ""
 
 func is_rooted_by_card(turn_number: int) -> bool:
 	return rooted_by_card_turn == turn_number
@@ -173,7 +180,9 @@ func reset_for_board_entry() -> void:
 	op_healer_charges = 0
 	mommy_triggered_turn = -1
 	martyr_triggered_turn = -1
+	temporary_hand_expire_turn = -1
 	temporary_spawn_expire_turn = -1
+	pending_definition_path = ""
 
 	# شیلدهای قبلی نباید بعد از Discard باقی بمانند.
 	shield_count = 0

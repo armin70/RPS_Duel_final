@@ -964,6 +964,10 @@ func _start_new_turn_for_player(
 	if player == null:
 		return
 
+	# Mommy's free card exists in hand for exactly one turn. Remove an
+	# unplayed reward permanently before the ordinary hand is discarded.
+	_expire_unplayed_mommy_hand_cards(player)
+
 	# تمام کارت‌های باقی‌مانده Hand قبلی دور ریخته می‌شوند.
 	var discarded_hand_count: int = \
 		CardMover.discard_hand(player)
@@ -993,6 +997,17 @@ func _start_new_turn_for_player(
 		player.hand.append(reward)
 		drawn_cards.append(reward)
 	player.pending_hero_rewards.clear()
+
+	# Mommy rewards also arrive after the normal draw, but unlike Hero rewards
+	# they are free and disappear permanently if not played this turn.
+	for reward: CardInstance in player.pending_mommy_rewards:
+		if reward == null:
+			continue
+		reward.zone = CardZone.Type.HAND
+		reward.current_slot = CardInstance.NO_SLOT
+		player.hand.append(reward)
+		drawn_cards.append(reward)
+	player.pending_mommy_rewards.clear()
 
 	if player.hero != null:
 		player.hero.hero_moves_this_turn = 0
@@ -1697,10 +1712,10 @@ func _resolve_new_special_card_results() -> void:
 			String(entry.get("reason", "SPECIAL CARD REMOVED"))
 		)
 
-	# Mommy spawns happen after Kamikaze/Martyr removals, so newly-opened legal
-	# board spaces may be used. One Mommy can trigger at most once per turn.
+	# Mommy does NOT spawn onto the board. A free same-type normal card is
+	# queued for the owner's NEXT hand. One Mommy triggers at most once/turn.
 	for entry: Dictionary in mommy_spawns:
-		_spawn_mommy_temporary_card(
+		_queue_mommy_free_hand_card(
 			int(entry.get("player_id", 0)),
 			entry.get("source", null) as CardInstance
 		)
@@ -1723,7 +1738,7 @@ func _process_special_card_result_side(
 	if behavior == null:
 		return
 
-	# Mommy: any win (PvP or Dealer) creates one temporary same-type card.
+	# Mommy: any win (PvP or Dealer) queues one free same-type card for next hand.
 	if behavior is MommyBehavior and outcome == BattleAct.Outcome.WIN:
 		if card.mommy_triggered_turn != state.turn_number:
 			card.mommy_triggered_turn = state.turn_number
@@ -1786,55 +1801,97 @@ func _grant_random_friendly_shield(player_id: int, source: CardInstance) -> void
 	print("MARTYR SHIELD | target=", chosen.definition.display_name, " | shields=", chosen.shield_count)
 
 
-func _spawn_mommy_temporary_card(player_id: int, source: CardInstance) -> void:
+func _queue_mommy_free_hand_card(
+	player_id: int,
+	source: CardInstance
+) -> void:
 	if source == null or source.definition == null:
 		return
+
 	var behavior := source.definition.behavior as MommyBehavior
 	if behavior == null or behavior.spawned_card == null:
 		return
+
 	var player: PlayerState = state.get_player(player_id)
 	if player == null:
 		return
-	var legal_slots: Array[int] = []
-	for slot_id: int in SlotID.all_slots():
-		if not player.board.is_slot_empty(slot_id):
-			continue
-		if not _can_play_in_row_order(player, slot_id):
-			continue
-		legal_slots.append(slot_id)
-	if legal_slots.is_empty():
+
+	var reward: CardInstance = card_factory.create_card(
+		behavior.spawned_card,
+		player_id
+	)
+	if reward == null:
 		return
-	var token: CardInstance = card_factory.create_card(behavior.spawned_card, player_id)
-	var chosen_slot: int = legal_slots.pick_random()
-	if not player.board.place_card(chosen_slot, token):
-		return
-	token.turn_played = state.turn_number
-	token.temporary_spawn_expire_turn = state.turn_number + 1
-	print("MOMMY SPAWN | owner=", player_id, " | card=", token.definition.display_name, " | slot=", chosen_slot, " | expires_after_turn=", token.temporary_spawn_expire_turn)
+
+	# Free next turn. It expires at the START of the turn after that if it was
+	# never played. Playing it clears this marker in reset_for_board_entry().
+	reward.mana_cost_override = 0
+	reward.temporary_hand_expire_turn = state.turn_number + 2
+	reward.zone = CardZone.Type.DRAW
+	reward.current_slot = CardInstance.NO_SLOT
+	player.pending_mommy_rewards.append(reward)
+
+	print(
+		"MOMMY REWARD QUEUED | owner=", player_id,
+		" | card=", reward.definition.display_name,
+		" | expires_start_turn=", reward.temporary_hand_expire_turn
+	)
 
 
-func _expire_temporary_spawn_cards() -> void:
+func _expire_unplayed_mommy_hand_cards(player: PlayerState) -> void:
+	if player == null or state == null:
+		return
+
+	var expired: Array[CardInstance] = []
+	for card: CardInstance in player.hand:
+		if card == null:
+			continue
+		if card.temporary_hand_expire_turn < 0:
+			continue
+		if state.turn_number < card.temporary_hand_expire_turn:
+			continue
+		expired.append(card)
+
+	for card: CardInstance in expired:
+		player.hand.erase(card)
+		card.zone = CardZone.Type.REMOVED
+		card.current_slot = CardInstance.NO_SLOT
+		print(
+			"MOMMY FREE CARD EXPIRED | owner=", player.player_id,
+			" | card=", card.definition.display_name
+		)
+
+
+func _apply_pending_card_definition_changes() -> void:
 	if state == null:
 		return
+
 	for player_id: int in [1, 2]:
 		var player: PlayerState = state.get_player(player_id)
 		if player == null:
 			continue
-		var expired: Array[int] = []
+
 		for slot_id: int in SlotID.all_slots():
 			var card: CardInstance = player.board.get_card(slot_id)
-			if card == null:
+			if card == null or card.pending_definition_path.is_empty():
 				continue
-			if card.temporary_spawn_expire_turn < 0:
+
+			var next_def: CardDefinition = ResourceLoader.load(
+				card.pending_definition_path
+			) as CardDefinition
+			card.pending_definition_path = ""
+			if next_def == null:
 				continue
-			if state.turn_number < card.temporary_spawn_expire_turn:
-				continue
-			expired.append(slot_id)
-		for slot_id: int in expired:
-			var card: CardInstance = player.board.remove_card(slot_id)
-			if card != null:
-				card.zone = CardZone.Type.REMOVED
-				print("MOMMY TEMPORARY CARD EXPIRED | card=", card.definition.display_name)
+
+			var old_name: String = (
+				card.definition.display_name if card.definition != null else "Card"
+			)
+			card.definition = next_def
+			print(
+				"CHANGELING TRANSFORM | owner=", player_id,
+				" | old=", old_name,
+				" | new=", next_def.display_name
+			)
 
 
 func _resolve_killer_cards() -> void:
@@ -2147,12 +2204,12 @@ func finish_combat() -> bool:
 
 	state.phase = MatchPhase.Type.CLEANUP
 
-	# Temporary Mommy cards survive exactly through their following combat.
-	_expire_temporary_spawn_cards()
-
 	# Resolve the new card families only after every battle animation/result has
 	# been applied, so middle-row multi-clashes cannot invalidate references.
 	_resolve_new_special_card_results()
+
+	# Changeling changes type only after the entire battle phase is over.
+	_apply_pending_card_definition_changes()
 
 	# Rush removes every card that lost a direct PvP clash before any normal
 	# Killer/Reserve cleanup can claim it. This is the only permanent removal.

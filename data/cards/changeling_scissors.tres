@@ -1,19 +1,21 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://whfs0nceh80h"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://dx3a82hcit75p"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
-[ext_resource type="Script" uid="uid://ln5gru7h36fc" path="res://core/cards/behaviors/root_opponent_behavior.gd" id="2_behavior"]
-[ext_resource type="Texture2D" uid="uid://dn67p2tw34vmj" path="res://art/cards/new_batch/changeling_scissors.png" id="3_art"]
+[ext_resource type="Script" uid="uid://pc1bfiwt43mw" path="res://core/cards/behaviors/changeling_behavior.gd" id="2_behavior"]
+[ext_resource type="Texture2D" uid="uid://bwxupudmqtygg" path="res://art/cards/corrected_new_batch/changeling_type1_scissors.jpg" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://cviqnn5luh6s1" path="res://art/card_info/new_corrected/153.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
+next_definition_path = "res://data/cards/changeling_rock.tres"
 
 [resource]
 script = ExtResource("1_card")
 card_id = &"changeling_scissors"
-display_name = "Changeling Scissors"
+display_name = "Changeling Type1 Scissors"
 gesture = 2
 mana_cost = 7
 rarity = 1
 front_texture = ExtResource("3_art")
-info_image = ExtResource("3_art")
+info_image = ExtResource("99_info")
 behavior = SubResource("Behavior")

@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://b45s4bdwviux5"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://djjrmxhtma4u8"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
 [ext_resource type="Script" uid="uid://6yl11e2mnh3o" path="res://core/cards/behaviors/martyr_healer_behavior.gd" id="2_behavior"]
 [ext_resource type="Texture2D" uid="uid://cjhn66fro4w2y" path="res://art/cards/new_batch/martyr_healer_scissors.png" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://bekt1fqcqslau" path="res://art/card_info/new_corrected/207.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
@@ -15,5 +16,5 @@ gesture = 2
 mana_cost = 5
 rarity = 1
 front_texture = ExtResource("3_art")
-info_image = ExtResource("3_art")
+info_image = ExtResource("99_info")
 behavior = SubResource("Behavior")

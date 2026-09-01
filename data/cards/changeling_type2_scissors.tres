@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://4vi3n06dfqym"]
+
+[ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
+[ext_resource type="Script" uid="uid://pc1bfiwt43mw" path="res://core/cards/behaviors/changeling_behavior.gd" id="2_behavior"]
+[ext_resource type="Texture2D" uid="uid://dq8vvn7rsih0p" path="res://art/cards/corrected_new_batch/changeling_type2_scissors.jpg" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://cwb5xdefkmcwr" path="res://art/card_info/new_corrected/156.jpg" id="99_info"]
+
+[sub_resource type="Resource" id="Behavior"]
+script = ExtResource("2_behavior")
+trigger_outcome = 2
+next_definition_path = "res://data/cards/changeling_type2_paper.tres"
+
+[resource]
+script = ExtResource("1_card")
+card_id = &"changeling_type2_scissors"
+display_name = "Changeling Type2 Scissors"
+gesture = 2
+mana_cost = 7
+rarity = 1
+front_texture = ExtResource("3_art")
+info_image = ExtResource("99_info")
+behavior = SubResource("Behavior")

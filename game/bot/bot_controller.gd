@@ -1896,15 +1896,44 @@ func _score_special_behavior(
 
 		return float(defeated_dealers) * 5.0
 
+	if behavior is TacticalBombBehavior:
+		var bomb := behavior as TacticalBombBehavior
+		var bomb_lane: int = SlotID.get_lane(slot_id)
+		var removable: int = 0
+		for own_slot: int in SlotID.all_slots():
+			if SlotID.get_lane(own_slot) != bomb_lane:
+				continue
+			var own_card: CardInstance = bot.board.get_card(own_slot)
+			if own_card == null or own_card == card or own_card.is_hero():
+				continue
+			if own_card.get_gesture() == bomb.destroyed_gesture:
+				removable += 1
+		return float(removable) * 5.0 - (2.0 if removable == 0 else 0.0)
+
 	if behavior is RootOpponentBehavior:
-		var root_target: CardInstance = _get_visible_opponent_card(
-			state, opponent, slot_id
-		)
-		if root_target == null:
+		var root_lane: int = SlotID.get_lane(slot_id)
+		var root_value: float = 0.0
+		var root_count: int = 0
+		for enemy_slot: int in SlotID.all_slots():
+			if SlotID.get_lane(enemy_slot) != root_lane:
+				continue
+			var root_target: CardInstance = _get_visible_opponent_card(
+				state, opponent, enemy_slot
+			)
+			if root_target == null:
+				continue
+			if root_target.is_hero() and not (behavior as RootOpponentBehavior).affects_heroes:
+				continue
+			root_count += 1
+			root_value += _card_importance(root_target) * 0.35
+		if root_count == 0:
 			return -3.0
-		if root_target.is_hero() and not (behavior as RootOpponentBehavior).affects_heroes:
-			return -5.0
-		return 6.0 + _card_importance(root_target) * 0.7
+		return 4.0 + float(root_count) * 3.0 + root_value
+
+	if behavior is ChangelingBehavior:
+		# Flexible type cycling is useful, but not worth sacrificing the main
+		# board plan for by itself.
+		return 5.0
 
 	if behavior is BFGBehavior:
 		var bfg_bonus: float = 5.0
@@ -3021,6 +3050,10 @@ func _card_importance(card: CardInstance) -> float:
 	elif behavior is DebufferBehavior:
 		value += 5.0
 	elif behavior is RootOpponentBehavior:
+		value += 5.0
+	elif behavior is TacticalBombBehavior:
+		value += 5.0
+	elif behavior is ChangelingBehavior:
 		value += 5.0
 	elif behavior is KamikazeBehavior:
 		value += 5.0

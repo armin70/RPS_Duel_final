@@ -23,6 +23,8 @@ var board_move_used_turn: int = -1
 # Every player owns exactly one persistent Hero outside the normal deck cycle.
 var hero: CardInstance
 var pending_hero_rewards: Array[CardInstance] = []
+# Mommy rewards are generated after combat and delivered to the next hand.
+var pending_mommy_rewards: Array[CardInstance] = []
 
 func _init(new_player_id: int) -> void:
 	player_id = new_player_id
@@ -43,5 +45,6 @@ func get_remaining_card_count() -> int:
 		+ discard_pile.size()
 		+ reserve_pile.size()
 		+ pending_hero_rewards.size()
+		+ pending_mommy_rewards.size()
 		+ ordinary_board_cards
 	)

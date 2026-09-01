@@ -1,12 +1,12 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://capaig0q6an80"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bdentt5gyl5y5"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
-[ext_resource type="Script" uid="uid://ln5gru7h36fc" path="res://core/cards/behaviors/root_opponent_behavior.gd" id="2_behavior"]
-[ext_resource type="Texture2D" uid="uid://ct2j5n2fbk5ok" path="res://art/cards/new_batch/tactical_bomb_scissors.png" id="3_art"]
+[ext_resource type="Script" uid="uid://dd63qy73tltcy" path="res://core/cards/behaviors/tactical_bomb_behavior.gd" id="2_behavior"]
+[ext_resource type="Texture2D" uid="uid://camdp0y0basxw" path="res://art/cards/corrected_new_batch/tactical_bomb_scissors.jpg" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://c2wn3r04k8i64" path="res://art/card_info/new_corrected/147.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
-affects_heroes = false
 
 [resource]
 script = ExtResource("1_card")
@@ -16,5 +16,5 @@ gesture = 2
 mana_cost = 4
 rarity = 1
 front_texture = ExtResource("3_art")
-info_image = ExtResource("3_art")
+info_image = ExtResource("99_info")
 behavior = SubResource("Behavior")

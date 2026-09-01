@@ -776,9 +776,10 @@ static func _existing_pvp_pairs(sequence: BattleSequence) -> Dictionary:
 	return pairs
 
 
-static func _lane_taunt(player: PlayerState, lane: int) -> Dictionary:
+static func _lane_taunt_slots(player: PlayerState, lane: int) -> Array[int]:
+	var result: Array[int] = []
 	if player == null:
-		return {}
+		return result
 	for slot_id: int in SlotID.all_slots():
 		if SlotID.get_lane(slot_id) != lane:
 			continue
@@ -786,8 +787,8 @@ static func _lane_taunt(player: PlayerState, lane: int) -> Dictionary:
 		if card == null or card.definition == null:
 			continue
 		if card.definition.behavior is TauntBehavior:
-			return {"card": card, "slot": slot_id}
-	return {}
+			result.append(slot_id)
+	return result
 
 
 static func _normal_pvp_target_slots(source_slot: int) -> Array[int]:
@@ -825,11 +826,11 @@ static func _add_all_player_pvp_clashes(state: MatchState, sequence: BattleSeque
 		if p1_card == null:
 			continue
 		var lane: int = SlotID.get_lane(source_slot)
-		var taunt_info: Dictionary = _lane_taunt(state.player_two, lane)
-		var target_slots: Array[int] = []
-		if not taunt_info.is_empty():
-			target_slots.append(int(taunt_info.get("slot", -1)))
-		else:
+		var target_slots: Array[int] = _lane_taunt_slots(
+			state.player_two,
+			lane
+		)
+		if target_slots.is_empty():
 			target_slots = _normal_pvp_target_slots(source_slot)
 		for target_slot: int in target_slots:
 			var p2_card: CardInstance = state.player_two.board.get_card(target_slot)
@@ -850,11 +851,11 @@ static func _add_all_player_pvp_clashes(state: MatchState, sequence: BattleSeque
 		if p2_card == null:
 			continue
 		var p2_lane: int = SlotID.get_lane(p2_source_slot)
-		var p2_taunt_info: Dictionary = _lane_taunt(state.player_one, p2_lane)
-		var p2_target_slots: Array[int] = []
-		if not p2_taunt_info.is_empty():
-			p2_target_slots.append(int(p2_taunt_info.get("slot", -1)))
-		else:
+		var p2_target_slots: Array[int] = _lane_taunt_slots(
+			state.player_one,
+			p2_lane
+		)
+		if p2_target_slots.is_empty():
 			p2_target_slots = _normal_pvp_target_slots(p2_source_slot)
 		for p2_target_slot: int in p2_target_slots:
 			var target_p1_card: CardInstance = state.player_one.board.get_card(p2_target_slot)
@@ -872,49 +873,57 @@ static func _add_all_player_pvp_clashes(state: MatchState, sequence: BattleSeque
 static func _append_bfg_column_wins(state: MatchState, sequence: BattleSequence) -> void:
 	if state == null or sequence == null or state.rush_mode_enabled:
 		return
+
 	var pairs: Dictionary = _existing_pvp_pairs(sequence)
 	var snapshot: Array[BattleAct] = []
 	snapshot.assign(sequence.acts)
+	var first_clash_seen: Dictionary = {}
+
+	# BFG only checks the FIRST opposing player card it competes with. If that
+	# first clash is not a win, later wins in the same battle do not trigger the
+	# column sweep.
 	for act: BattleAct in snapshot:
 		if act == null or act.type != BattleAct.Type.PLAYER_VS_PLAYER:
 			continue
-		var winner: CardInstance = null
-		var winner_slot: int = -1
-		var loser_owner_id: int = 0
-		if (
-			act.attacker_outcome == BattleAct.Outcome.WIN
-			and act.attacker != null
-			and act.attacker.definition != null
-			and act.attacker.definition.behavior is BFGBehavior
-		):
-			winner = act.attacker
-			winner_slot = act.attacker_slot_id
-			loser_owner_id = act.defender_owner_id
-		elif (
-			act.defender_outcome == BattleAct.Outcome.WIN
-			and act.defender != null
-			and act.defender.definition != null
-			and act.defender.definition.behavior is BFGBehavior
-		):
-			winner = act.defender
-			winner_slot = act.defender_slot_id
-			loser_owner_id = act.attacker_owner_id
-		if winner == null or loser_owner_id not in [1, 2]:
-			continue
-		var enemy: PlayerState = state.get_player(loser_owner_id)
-		if enemy == null:
-			continue
-		for enemy_slot: int in _column_slots_for(winner_slot):
-			var target: CardInstance = enemy.board.get_card(enemy_slot)
-			if target == null:
+
+		for side: int in [0, 1]:
+			var bfg: CardInstance = act.attacker if side == 0 else act.defender
+			if bfg == null or bfg.definition == null:
 				continue
-			var key: String = _pair_key(winner, target)
-			if pairs.has(key):
+			if not (bfg.definition.behavior is BFGBehavior):
 				continue
-			sequence.add_act(_create_forced_pvp_win_act(
-				state, winner, target, winner_slot, enemy_slot
-			))
-			pairs[key] = true
+			if first_clash_seen.has(bfg.instance_id):
+				continue
+			first_clash_seen[bfg.instance_id] = true
+
+			var outcome: int = act.attacker_outcome if side == 0 else act.defender_outcome
+			if outcome != BattleAct.Outcome.WIN:
+				continue
+
+			var bfg_slot: int = act.attacker_slot_id if side == 0 else act.defender_slot_id
+			var enemy_owner_id: int = act.defender_owner_id if side == 0 else act.attacker_owner_id
+			if enemy_owner_id not in [1, 2]:
+				continue
+
+			var enemy: PlayerState = state.get_player(enemy_owner_id)
+			if enemy == null:
+				continue
+
+			for enemy_slot: int in _column_slots_for(bfg_slot):
+				var target: CardInstance = enemy.board.get_card(enemy_slot)
+				if target == null:
+					continue
+				var key: String = _pair_key(bfg, target)
+				if pairs.has(key):
+					continue
+				sequence.add_act(_create_forced_pvp_win_act(
+					state,
+					bfg,
+					target,
+					bfg_slot,
+					enemy_slot
+				))
+				pairs[key] = true
 
 
 static func _create_forced_pvp_win_act(

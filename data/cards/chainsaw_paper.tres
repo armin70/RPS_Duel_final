@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://b04d1gcyw66kw"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bjb77nyecou35"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_def"]
 [ext_resource type="Script" uid="uid://dknd8m8l1cjno" path="res://core/cards/behaviors/chainsaw_behavior.gd" id="2_behavior"]
 [ext_resource type="Texture2D" uid="uid://6o3jeyhgdx0j" path="res://art/cards/navar.png" id="3_vbgod"]
 [ext_resource type="Resource" uid="uid://c3yt6kwerdkj7" path="res://data/vfx/Saw.tres" id="5_vfx"]
+[ext_resource type="Texture2D" uid="uid://dpeehkvj0b4y6" path="res://art/card_info/new_corrected/135.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
@@ -16,5 +17,6 @@ gesture = 1
 mana_cost = 4
 rarity = 1
 front_texture = ExtResource("3_vbgod")
+info_image = ExtResource("99_info")
 ability_vfx = ExtResource("5_vfx")
 behavior = SubResource("Behavior")

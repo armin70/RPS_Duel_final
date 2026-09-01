@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://bnhj2q3hl1w60"]
+[gd_resource type="Resource" script_class="CardDefinition" format=3 uid="uid://n1qnrt5tuxoa"]
 
 [ext_resource type="Script" uid="uid://bfa6ofr3bgyvd" path="res://core/cards/card_definition.gd" id="1_card"]
 [ext_resource type="Script" uid="uid://csamhpblns70p" path="res://core/cards/behaviors/bfg_behavior.gd" id="2_behavior"]
 [ext_resource type="Texture2D" uid="uid://cnbqclhnisq44" path="res://art/cards/new_batch/bfg_rock.png" id="3_art"]
+[ext_resource type="Texture2D" uid="uid://424r7h3h0j3j" path="res://art/card_info/new_corrected/212.jpg" id="99_info"]
 
 [sub_resource type="Resource" id="Behavior"]
 script = ExtResource("2_behavior")
@@ -14,5 +15,5 @@ display_name = "BFG Rock"
 mana_cost = 7
 rarity = 1
 front_texture = ExtResource("3_art")
-info_image = ExtResource("3_art")
+info_image = ExtResource("99_info")
 behavior = SubResource("Behavior")
