@@ -46,6 +46,8 @@ var displayed_shield_count: int = 0
 var shield_badge_base_scale: Vector3 = Vector3.ONE
 var card_material: StandardMaterial3D
 var hero_status_label: Label3D
+var card_status_label: Label3D
+var displayed_card_status: String = ""
 
 var _inspect_press_active: bool = false
 var _inspect_press_position: Vector2 = Vector2.ZERO
@@ -62,6 +64,7 @@ func _ready() -> void:
 
 	_create_card_material()
 	_build_hero_status_label()
+	_build_card_status_label()
 	_refresh_gesture_override_label()
 
 
@@ -77,6 +80,69 @@ func _build_hero_status_label() -> void:
 	hero_status_label.no_depth_test = true
 	hero_status_label.visible = false
 	add_child(hero_status_label)
+
+
+func _build_card_status_label() -> void:
+	if card_status_label != null:
+		return
+
+	card_status_label = Label3D.new()
+	card_status_label.name = "CardStatusLabel"
+	card_status_label.position = Vector3(0.0, 0.16, 0.05)
+	card_status_label.font_size = 15
+	card_status_label.outline_size = 6
+	card_status_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	card_status_label.no_depth_test = true
+	card_status_label.visible = false
+	add_child(card_status_label)
+
+
+func refresh_card_status(
+	turn_number: int,
+	animate_change: bool = true
+) -> void:
+	if card_status_label == null:
+		_build_card_status_label()
+
+	if card_instance == null or not is_face_up:
+		card_status_label.visible = false
+		displayed_card_status = ""
+		return
+
+	var status: String = ""
+
+	if card_instance.rooted_by_card_turn == turn_number:
+		status = "ROOT"
+	elif card_instance.rooted_by_card_turn == turn_number + 1:
+		status = "ROOT NEXT"
+	elif card_instance.debuffed_no_win_turn == turn_number:
+		status = "DEBUFF"
+	elif card_instance.debuffed_no_win_turn == turn_number + 1:
+		status = "DEBUFF NEXT"
+
+	var changed: bool = status != displayed_card_status
+	displayed_card_status = status
+	card_status_label.text = status
+	card_status_label.visible = not status.is_empty()
+
+	if animate_change and changed and not status.is_empty():
+		_play_card_status_pulse()
+
+
+func _play_card_status_pulse() -> void:
+	if card_status_label == null:
+		return
+
+	card_status_label.scale = Vector3.ONE * 1.45
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_BACK)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+		card_status_label,
+		"scale",
+		Vector3.ONE,
+		0.28
+	)
 
 
 func refresh_hero_status(turn_number: int) -> void:
@@ -137,6 +203,7 @@ func setup(
 	_create_card_material()
 	set_face_up(start_face_up)
 	_refresh_gesture_override_label()
+	refresh_card_status(-999, false)
 
 
 func set_face_up(value: bool) -> void:
@@ -168,6 +235,8 @@ func set_face_up(value: bool) -> void:
 		card_material.albedo_texture = back_texture
 
 	_refresh_gesture_override_label()
+	if not value and card_status_label != null:
+		card_status_label.visible = false
 
 
 func refresh_front_visual() -> void:

@@ -3846,6 +3846,10 @@ func _refresh_board_disabled_visuals(
 				disabled,
 				false
 			)
+			card_view.refresh_card_status(
+				engine.state.turn_number,
+				animate_changes
+			)
 
 			var became_disabled: bool = (
 				disabled
@@ -6175,6 +6179,10 @@ func _refresh_board_shield_visuals(
 		card_view.refresh_front_visual()
 		card_view.set_shield_count(
 			card.shield_count,
+			animate_change
+		)
+		card_view.refresh_card_status(
+			state.turn_number,
 			animate_change
 		)
 		card_view.refresh_hero_status(state.turn_number)

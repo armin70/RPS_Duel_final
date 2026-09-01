@@ -560,7 +560,8 @@ static func _add_dealer_attacks(
 		sequence.add_act(mustache_act)
 		return
 
-# اره‌برقی دیگر برای هر کارت Dealer یک Act جدا نمی‌سازد.
+# Special RPS: عبارت «کارت‌های دیو» در Rule Sheet یعنی Dealer cards.
+# این Sweep فقط روی Dealer board اجرا می‌شود و هرگز کارت Player مقابل را هدف نمی‌گیرد.
 # فقط یک Act می‌سازد و امتیاز Dealerهایی که Counter مستقیمش نیستند را یک‌جا می‌دهد.
 	if (
 		attack_type

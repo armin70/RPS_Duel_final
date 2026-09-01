@@ -13,6 +13,8 @@ func get_dealer_attack_type(
 	if source_card.ability_used:
 		return DealerAttackType.NORMAL
 
+	# «کارت‌های دیو» در طراحی یعنی Dealer cards. این قدرت فقط در
+	# Player-vs-Dealer مصرف می‌شود و هیچ کارت Player را Sweep نمی‌کند.
 	# قدرت در اولین فرصت حمله به Dealer مصرف می‌شود.
 	source_card.ability_used = true
 
