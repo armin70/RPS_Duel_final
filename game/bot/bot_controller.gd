@@ -1945,9 +1945,59 @@ func _score_special_behavior(
 		return bfg_bonus
 
 	if behavior is TauntBehavior:
-		# Taunt is valuable when this card is not a terrible matchup and can soak
-		# pressure away from the rest of the column. Avoid over-prioritizing it.
-		return 5.0 + float(card.shield_count) * 2.0
+		# Taunt protects only friendly cards that would lose their normal RPS
+		# clash. Value it by the threatened cards in this lane, not as a generic
+		# "fight everything" card.
+		var taunt_lane: int = SlotID.get_lane(slot_id)
+		var threatened_count: int = 0
+		var protected_value: float = 0.0
+
+		for own_slot: int in SlotID.all_slots():
+			if SlotID.get_lane(own_slot) != taunt_lane:
+				continue
+
+			var own_card: CardInstance = bot.board.get_card(own_slot)
+			if own_card == null:
+				continue
+			if own_card.definition != null and own_card.definition.behavior is TauntBehavior:
+				continue
+
+			var is_threatened: bool = false
+			for enemy_slot: int in SlotID.all_slots():
+				if SlotID.get_lane(enemy_slot) != taunt_lane:
+					continue
+
+				var enemy_card: CardInstance = _get_visible_opponent_card(
+					state, opponent, enemy_slot
+				)
+				if enemy_card == null:
+					continue
+
+				if (
+					_compare_gestures(
+						enemy_card.get_gesture(),
+						own_card.get_gesture()
+					)
+					== BattleAct.Outcome.WIN
+				):
+					is_threatened = true
+					break
+
+			if is_threatened:
+				threatened_count += 1
+				protected_value += minf(
+					8.0,
+					_card_importance(own_card) * 0.45
+				)
+
+		var taunt_behavior := behavior as TauntBehavior
+		var shield_value: float = float(taunt_behavior.starting_shields) * 1.5
+		return (
+			5.0
+			+ shield_value
+			+ float(threatened_count) * 3.0
+			+ protected_value
+		)
 
 	if behavior is MommyBehavior:
 		return 7.0

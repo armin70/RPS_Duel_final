@@ -777,19 +777,54 @@ static func _existing_pvp_pairs(sequence: BattleSequence) -> Dictionary:
 	return pairs
 
 
+static func _is_taunt_card(card: CardInstance) -> bool:
+	if card == null or card.definition == null:
+		return false
+	return card.definition.behavior is TauntBehavior
+
+
 static func _lane_taunt_slots(player: PlayerState, lane: int) -> Array[int]:
 	var result: Array[int] = []
 	if player == null:
 		return result
+
 	for slot_id: int in SlotID.all_slots():
 		if SlotID.get_lane(slot_id) != lane:
 			continue
+
 		var card: CardInstance = player.board.get_card(slot_id)
-		if card == null or card.definition == null:
+		if not _is_taunt_card(card):
 			continue
-		if card.definition.behavior is TauntBehavior:
-			result.append(slot_id)
+
+		result.append(slot_id)
+
 	return result
+
+
+static func _select_taunt_slot(
+	player: PlayerState,
+	lane: int,
+	protected_card: CardInstance
+) -> int:
+	var taunt_slots: Array[int] = _lane_taunt_slots(player, lane)
+	if taunt_slots.is_empty():
+		return -1
+
+	# A Taunt never redirects a loss away from another Taunt. Taunts are the
+	# protectors and must be allowed to take their own normal clash.
+	if _is_taunt_card(protected_card):
+		return -1
+
+	# Prefer a Taunt that still has shields. If several Taunts exist, the normal
+	# SlotID order keeps the result deterministic (front cards before back).
+	for slot_id: int in taunt_slots:
+		var taunt_card: CardInstance = player.board.get_card(slot_id)
+		if taunt_card != null and taunt_card.shield_count > 0:
+			return slot_id
+
+	# Even with no shield left, the Taunt still intercepts and can take the loss
+	# itself instead of the protected card.
+	return taunt_slots[0]
 
 
 static func _normal_pvp_target_slots(source_slot: int) -> Array[int]:
@@ -815,60 +850,125 @@ static func _normal_pvp_target_slots(source_slot: int) -> Array[int]:
 	return []
 
 
-static func _add_all_player_pvp_clashes(state: MatchState, sequence: BattleSequence) -> void:
+static func _add_pvp_pair_once(
+	state: MatchState,
+	sequence: BattleSequence,
+	pairs: Dictionary,
+	player_one_card: CardInstance,
+	player_two_card: CardInstance,
+	player_one_slot: int,
+	player_two_slot: int
+) -> void:
+	if player_one_card == null or player_two_card == null:
+		return
+
+	var key: String = _pair_key(player_one_card, player_two_card)
+	if key.is_empty() or pairs.has(key):
+		return
+
+	sequence.add_act(
+		_create_player_vs_player_act(
+			state,
+			player_one_card,
+			player_two_card,
+			player_one_slot,
+			player_two_slot
+		)
+	)
+	pairs[key] = true
+
+
+static func _add_all_player_pvp_clashes(
+	state: MatchState,
+	sequence: BattleSequence
+) -> void:
 	if state == null or sequence == null:
 		return
+
 	var pairs: Dictionary = {}
 
-	# Every Player 1 card chooses its normal targets unless a Taunt exists in
-	# the opposing lane, in which case it can attack only that Taunt.
-	for source_slot: int in SlotID.all_slots():
-		var p1_card: CardInstance = state.player_one.board.get_card(source_slot)
-		if p1_card == null:
+	# Start from every NORMAL PvP matchup. Taunt only replaces a matchup when
+	# one card would beat the other by RPS. The losing card is removed from that
+	# clash and its lane Taunt takes the winning attack instead.
+	#
+	# This is intentionally different from the old implementation where every
+	# opposing card fought Taunt AND could still fight the original card.
+	for player_one_slot: int in SlotID.all_slots():
+		var player_one_card: CardInstance = \
+			state.player_one.board.get_card(player_one_slot)
+		if player_one_card == null:
 			continue
-		var lane: int = SlotID.get_lane(source_slot)
-		var target_slots: Array[int] = _lane_taunt_slots(
-			state.player_two,
-			lane
-		)
-		if target_slots.is_empty():
-			target_slots = _normal_pvp_target_slots(source_slot)
-		for target_slot: int in target_slots:
-			var p2_card: CardInstance = state.player_two.board.get_card(target_slot)
-			if p2_card == null:
-				continue
-			var key: String = _pair_key(p1_card, p2_card)
-			if pairs.has(key):
-				continue
-			sequence.add_act(_create_player_vs_player_act(
-				state, p1_card, p2_card, source_slot, target_slot
-			))
-			pairs[key] = true
 
-	# Symmetric pass: Player 2 cards also obey Player 1 Taunts. Pair de-duping
-	# prevents normal clashes from being added twice.
-	for p2_source_slot: int in SlotID.all_slots():
-		var p2_card: CardInstance = state.player_two.board.get_card(p2_source_slot)
-		if p2_card == null:
-			continue
-		var p2_lane: int = SlotID.get_lane(p2_source_slot)
-		var p2_target_slots: Array[int] = _lane_taunt_slots(
-			state.player_one,
-			p2_lane
-		)
-		if p2_target_slots.is_empty():
-			p2_target_slots = _normal_pvp_target_slots(p2_source_slot)
-		for p2_target_slot: int in p2_target_slots:
-			var target_p1_card: CardInstance = state.player_one.board.get_card(p2_target_slot)
-			if target_p1_card == null:
+		var normal_targets: Array[int] = \
+			_normal_pvp_target_slots(player_one_slot)
+
+		for player_two_slot: int in normal_targets:
+			var player_two_card: CardInstance = \
+				state.player_two.board.get_card(player_two_slot)
+			if player_two_card == null:
 				continue
-			var p2_pair_key: String = _pair_key(target_p1_card, p2_card)
-			if pairs.has(p2_pair_key):
-				continue
-			sequence.add_act(_create_player_vs_player_act(
-				state, target_p1_card, p2_card, p2_target_slot, p2_source_slot
-			))
-			pairs[p2_pair_key] = true
+
+			var lane: int = SlotID.get_lane(player_one_slot)
+			var raw_outcome: int = _compare_gestures(
+				player_one_card.get_gesture(),
+				player_two_card.get_gesture()
+			)
+
+			# Player 1 is the winner: Player 2's losing card is protected by
+			# Player 2's Taunt. The winner fights Taunt instead.
+			if raw_outcome == BattleAct.Outcome.WIN:
+				var player_two_taunt_slot: int = _select_taunt_slot(
+					state.player_two,
+					lane,
+					player_two_card
+				)
+				if player_two_taunt_slot != -1:
+					var player_two_taunt: CardInstance = \
+						state.player_two.board.get_card(player_two_taunt_slot)
+					_add_pvp_pair_once(
+						state,
+						sequence,
+						pairs,
+						player_one_card,
+						player_two_taunt,
+						player_one_slot,
+						player_two_taunt_slot
+					)
+					continue
+
+			# Player 2 is the winner: Player 1's losing card is protected by
+			# Player 1's Taunt. The Player 2 winner fights that Taunt instead.
+			if raw_outcome == BattleAct.Outcome.LOSS:
+				var player_one_taunt_slot: int = _select_taunt_slot(
+					state.player_one,
+					lane,
+					player_one_card
+				)
+				if player_one_taunt_slot != -1:
+					var player_one_taunt: CardInstance = \
+						state.player_one.board.get_card(player_one_taunt_slot)
+					_add_pvp_pair_once(
+						state,
+						sequence,
+						pairs,
+						player_one_taunt,
+						player_two_card,
+						player_one_taunt_slot,
+						player_two_slot
+					)
+					continue
+
+			# Ties are not dangerous, and a normal clash involving Taunt itself
+			# must remain normal. No protection is needed.
+			_add_pvp_pair_once(
+				state,
+				sequence,
+				pairs,
+				player_one_card,
+				player_two_card,
+				player_one_slot,
+				player_two_slot
+			)
 
 
 static func _append_bfg_column_wins(state: MatchState, sequence: BattleSequence) -> void:

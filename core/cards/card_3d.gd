@@ -48,6 +48,8 @@ var card_material: StandardMaterial3D
 var hero_status_label: Label3D
 var card_status_label: Label3D
 var displayed_card_status: String = ""
+var engineer_type_label: Label3D
+var displayed_engineer_type: String = ""
 
 var _inspect_press_active: bool = false
 var _inspect_press_position: Vector2 = Vector2.ZERO
@@ -65,7 +67,9 @@ func _ready() -> void:
 	_create_card_material()
 	_build_hero_status_label()
 	_build_card_status_label()
+	_build_engineer_type_label()
 	_refresh_gesture_override_label()
+	_refresh_engineer_type_label(false)
 
 
 func _build_hero_status_label() -> void:
@@ -73,10 +77,12 @@ func _build_hero_status_label() -> void:
 		return
 	hero_status_label = Label3D.new()
 	hero_status_label.name = "HeroStatusLabel"
-	hero_status_label.position = Vector3(0.0, 0.12, -0.28)
-	hero_status_label.font_size = 11
-	hero_status_label.outline_size = 5
-	hero_status_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	hero_status_label.position = Vector3(0.0, 0.024, -0.12)
+	hero_status_label.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+	hero_status_label.font_size = 9
+	hero_status_label.outline_size = 2
+	hero_status_label.pixel_size = 0.0016
+	hero_status_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	hero_status_label.no_depth_test = true
 	hero_status_label.visible = false
 	add_child(hero_status_label)
@@ -88,13 +94,85 @@ func _build_card_status_label() -> void:
 
 	card_status_label = Label3D.new()
 	card_status_label.name = "CardStatusLabel"
-	card_status_label.position = Vector3(0.0, 0.16, 0.05)
-	card_status_label.font_size = 15
-	card_status_label.outline_size = 6
-	card_status_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	card_status_label.position = Vector3(0.0, 0.024, 0.105)
+	card_status_label.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+	card_status_label.font_size = 9
+	card_status_label.outline_size = 2
+	card_status_label.pixel_size = 0.0016
+	card_status_label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	card_status_label.no_depth_test = true
 	card_status_label.visible = false
 	add_child(card_status_label)
+
+
+func _build_engineer_type_label() -> void:
+	# Engineer type now uses the existing CardName Label3D, exactly like Hero.
+	# Keeping this function as a no-op avoids changing the rest of the setup flow.
+	if engineer_type_label != null:
+		engineer_type_label.visible = false
+
+
+func _is_engineer_card() -> bool:
+	if card_instance == null or card_instance.definition == null:
+		return false
+
+	return String(card_instance.definition.card_id).begins_with("changeling")
+
+
+func _refresh_engineer_type_label(
+	animate_change: bool = true
+) -> void:
+	if engineer_type_label != null:
+		engineer_type_label.visible = false
+
+	if (
+		card_instance == null
+		or not is_face_up
+		or not _is_engineer_card()
+	):
+		displayed_engineer_type = ""
+		_refresh_gesture_override_label()
+		return
+
+	var gesture: CardGesture.Type = card_instance.get_gesture()
+	if gesture not in [
+		CardGesture.Type.ROCK,
+		CardGesture.Type.PAPER,
+		CardGesture.Type.SCISSORS
+	]:
+		displayed_engineer_type = ""
+		_refresh_gesture_override_label()
+		return
+
+	var type_text: String = CardGesture.Type.keys()[gesture]
+	var previous_type: String = displayed_engineer_type
+	displayed_engineer_type = type_text
+
+	# Uses CardName, the exact same Label3D used by Hero type display.
+	_refresh_gesture_override_label()
+
+	if (
+		animate_change
+		and not previous_type.is_empty()
+		and previous_type != type_text
+	):
+		_play_engineer_type_pulse()
+
+
+func _play_engineer_type_pulse() -> void:
+	if card_name == null or not card_name.visible:
+		return
+
+	card_name.scale = Vector3.ONE * 1.12
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_BACK)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+		card_name,
+		"scale",
+		Vector3.ONE,
+		0.30
+	)
 
 
 func refresh_card_status(
@@ -109,17 +187,26 @@ func refresh_card_status(
 		displayed_card_status = ""
 		return
 
-	var status: String = ""
+	var parts: Array[String] = []
+
+	if (
+		card_instance.zone == CardZone.Type.BOARD
+		and card_instance.definition != null
+		and card_instance.definition.behavior is TauntBehavior
+	):
+		parts.append("TAUNT")
 
 	if card_instance.rooted_by_card_turn == turn_number:
-		status = "ROOT"
+		parts.append("ROOT")
 	elif card_instance.rooted_by_card_turn == turn_number + 1:
-		status = "ROOT NEXT"
-	elif card_instance.debuffed_no_win_turn == turn_number:
-		status = "DEBUFF"
-	elif card_instance.debuffed_no_win_turn == turn_number + 1:
-		status = "DEBUFF NEXT"
+		parts.append("ROOT NEXT")
 
+	if card_instance.debuffed_no_win_turn == turn_number:
+		parts.append("DEBUFF")
+	elif card_instance.debuffed_no_win_turn == turn_number + 1:
+		parts.append("DEBUFF NEXT")
+
+	var status: String = " | ".join(parts)
 	var changed: bool = status != displayed_card_status
 	displayed_card_status = status
 	card_status_label.text = status
@@ -133,7 +220,7 @@ func _play_card_status_pulse() -> void:
 	if card_status_label == null:
 		return
 
-	card_status_label.scale = Vector3.ONE * 1.45
+	card_status_label.scale = Vector3.ONE * 1.16
 	var tween: Tween = create_tween()
 	tween.set_trans(Tween.TRANS_BACK)
 	tween.set_ease(Tween.EASE_OUT)
@@ -203,6 +290,7 @@ func setup(
 	_create_card_material()
 	set_face_up(start_face_up)
 	_refresh_gesture_override_label()
+	_refresh_engineer_type_label(false)
 	refresh_card_status(-999, false)
 
 
@@ -235,6 +323,7 @@ func set_face_up(value: bool) -> void:
 		card_material.albedo_texture = back_texture
 
 	_refresh_gesture_override_label()
+	_refresh_engineer_type_label(false)
 	if not value and card_status_label != null:
 		card_status_label.visible = false
 
@@ -255,6 +344,7 @@ func refresh_front_visual() -> void:
 		card_material.albedo_texture = card_instance.definition.front_texture
 
 	_refresh_gesture_override_label()
+	_refresh_engineer_type_label(true)
 
 
 func refresh_gesture_override_label() -> void:
@@ -274,6 +364,7 @@ func _refresh_gesture_override_label() -> void:
 	if (
 		not card_instance.has_gesture_override()
 		and not card_instance.is_hero()
+		and not _is_engineer_card()
 	):
 		card_name.visible = false
 		return

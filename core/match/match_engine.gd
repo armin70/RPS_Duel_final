@@ -1211,6 +1211,26 @@ func apply_battle_act(
 
 	act.resolved = true
 
+	# Changeling/Engineer type changes are intentionally deferred until the
+	# entire battle phase has resolved. Apply them as soon as the LAST act is
+	# resolved so the controller's normal post-act visual refresh can show the
+	# new artwork/type immediately on the card.
+	if _are_all_active_battle_acts_resolved():
+		_apply_pending_card_definition_changes()
+
+	return true
+
+
+func _are_all_active_battle_acts_resolved() -> bool:
+	if active_battle_sequence == null:
+		return false
+
+	for battle_act: BattleAct in active_battle_sequence.acts:
+		if battle_act == null:
+			continue
+		if not battle_act.resolved:
+			return false
+
 	return true
 
 
