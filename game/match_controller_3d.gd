@@ -153,9 +153,16 @@ var board_reflow_time: float = 0.16
 
 @export_category("Early Drop Highlight")
 # Highlight the intended board slot after the pointer has travelled roughly
-# one quarter of the route toward it. The real drop still needs an exact hit.
+# one quarter of the route toward it.
 @export_range(0.10, 0.75, 0.05)
 var early_drop_highlight_progress_ratio: float = 0.25
+
+# In the new perspective 2.5D layout the far rows occupy fewer pixels than the
+# near row. RayCast alone can therefore miss valid upper-row Area3D targets.
+# This screen-space radius is used as a perspective-safe fallback for both
+# highlight and final drop selection.
+@export_range(45.0, 180.0, 5.0)
+var projected_slot_pick_radius_px: float = 90.0
 
 
 @export_category("Bot and Reveal")
@@ -3589,12 +3596,72 @@ func _get_early_drop_highlight_place(
 			current_distance / route_distance
 		)
 
-		if route_progress < early_drop_highlight_progress_ratio:
+		var close_to_projected_slot: bool = (
+			current_distance <= _get_projected_slot_pick_radius()
+		)
+
+		if (
+			route_progress < early_drop_highlight_progress_ratio
+			and not close_to_projected_slot
+		):
 			continue
 
 		if current_distance < closest_distance:
 			closest_distance = current_distance
 			closest_place = target_place
+
+	return closest_place
+
+
+func _get_projected_slot_pick_radius() -> float:
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+
+	if viewport_size.y <= 0.0:
+		return projected_slot_pick_radius_px
+
+	# Scale gently with resolution while keeping the editor value as a useful
+	# minimum. On a 720-900px-tall game window this is roughly 90-100px.
+	return maxf(
+		projected_slot_pick_radius_px,
+		viewport_size.y * 0.105
+	)
+
+
+func _get_nearest_local_board_place_on_screen(
+	screen_position: Vector2
+) -> CardPlace3D:
+	if camera_3d == null or game_layout == null:
+		return null
+
+	var closest_place: CardPlace3D
+	var closest_distance: float = _get_projected_slot_pick_radius()
+
+	for slot_id: int in SlotID.all_slots():
+		var place: CardPlace3D = game_layout.get_board_place(
+			local_player_id,
+			slot_id
+		)
+
+		if place == null or place.card_anchor == null:
+			continue
+
+		var world_position: Vector3 = place.card_anchor.global_position
+
+		if camera_3d.is_position_behind(world_position):
+			continue
+
+		var projected_position: Vector2 = camera_3d.unproject_position(
+			world_position
+		)
+		var distance: float = screen_position.distance_to(
+			projected_position
+		)
+
+		if distance > closest_distance:
+			continue
+
+		closest_distance = distance
+		closest_place = place
 
 	return closest_place
 
@@ -3627,13 +3694,22 @@ func _get_place_under_mouse(
 			query
 		)
 
-	if result.is_empty():
-		return null
+	if not result.is_empty():
+		var ray_place := result.get(
+			"collider",
+			null
+		) as CardPlace3D
 
-	return result.get(
-		"collider",
-		null
-	) as CardPlace3D
+		if ray_place != null:
+			return ray_place
+
+	# Perspective-safe fallback:
+	# far board rows are visually smaller, so use their projected screen
+	# centers when the 3D collider is missed. This is also used by final drop,
+	# so highlight and actual placement can no longer disagree.
+	return _get_nearest_local_board_place_on_screen(
+		screen_position
+	)
 
 
 func _refresh_hand_positions() -> void:

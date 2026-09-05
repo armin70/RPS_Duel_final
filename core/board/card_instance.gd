@@ -27,7 +27,13 @@ var hero_active_used_turn: int = -1
 var hero_fury_turn: int = -1
 var hero_sleep_turn: int = -1
 var hero_root_turn: int = -1
+# Tahmineh Active: for the marked turn her R/P/S type cannot be changed by
+# covering her with a normal card.
+var hero_type_lock_turn: int = -1
+# Afrasiab Active is armed for this turn. If he loses directly to the enemy
+# Champion/Hero, two Poison cards are shuffled into that opponent's draw pile.
 var hero_afrasiab_active_turn: int = -1
+var hero_afrasiab_poison_triggered_turn: int = -1
 var hero_stealth_turn: int = -1 # legacy, no longer used
 # Heroes now use health as the real victory resource. Shield remains a
 # temporary one-hit buffer that can be gained by abilities/effects.
@@ -130,6 +136,10 @@ func is_hero_sleeping(turn_number: int) -> bool:
 
 func is_hero_rooted(turn_number: int) -> bool:
 	return is_hero() and hero_root_turn == turn_number
+
+
+func is_hero_type_locked(turn_number: int) -> bool:
+	return is_hero() and hero_type_lock_turn == turn_number
 
 
 func is_hero_afrasiab_active(turn_number: int) -> bool:

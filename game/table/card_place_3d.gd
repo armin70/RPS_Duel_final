@@ -68,6 +68,20 @@ func _ready() -> void:
 		invalid_cover_material.transparency = \
 			BaseMaterial3D.TRANSPARENCY_ALPHA
 
+		# 2.5D board: highlights must remain readable at every perspective depth.
+		# Depth testing can make the far/top slot mesh disappear into the flat
+		# ground or an occupied card, so render the translucent feedback on top.
+		for highlight_material: StandardMaterial3D in [
+			normal_highlight_material,
+			valid_cover_material,
+			invalid_cover_material
+		]:
+			highlight_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			highlight_material.no_depth_test = true
+			highlight_material.render_priority = 20
+
+		slot_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
 
 func _set_highlight_material(
 	highlight_kind: HighlightKind

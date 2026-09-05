@@ -1,45 +1,49 @@
 [gd_scene format=3 uid="uid://4j2c2m42kv3f"]
 
-[ext_resource type="PackedScene" uid="uid://6g8nfnr2m5s" path="res://art/main_land/sky.glb" id="1_j7ffe"]
+[ext_resource type="Texture2D" path="res://art/main_land/Land2.5D_V1.1.png" id="1_ground25d"]
+[ext_resource type="Script" path="res://game/board_2_5d.gd" id="1_board25d"]
+
 [ext_resource type="Script" uid="uid://61mdtpx0mhpy" path="res://game/table/game_layout.gd" id="1_v3atx"]
 [ext_resource type="PackedScene" uid="uid://y41sb3v7es7c" path="res://game/table/card_place_3d.tscn" id="2_7of5j"]
-[ext_resource type="PackedScene" uid="uid://jw4v6vchxd0a" path="res://art/main_land/environment.glb" id="2_kqp58"]
 [ext_resource type="Script" uid="uid://dp6ghb3kp71ga" path="res://game/match_controller_3d.gd" id="3_g4axw"]
-[ext_resource type="PackedScene" uid="uid://b346yb626whtk" path="res://art/main_land/battleground.glb" id="3_g56ji"]
 [ext_resource type="PackedScene" uid="uid://mey4xdpnjtbf" path="res://game/table/card_pile_3d.tscn" id="4_ult0l"]
 [ext_resource type="Resource" uid="uid://57vjxew312gp" path="res://data/rules/default_match_rules.tres" id="4_v3atx"]
-[ext_resource type="PackedScene" uid="uid://doelnx2jhw4b2" path="res://game/table/game_balance_scale_3d.tscn" id="5_8b6m4"]
 [ext_resource type="Resource" uid="uid://ry2pgu63y4qe" path="res://data/decks/starter_deck.tres" id="5_xheak"]
 [ext_resource type="Resource" uid="uid://btrccapipoth7" path="res://data/decks/dealer_deck.tres" id="6_pdiy6"]
 [ext_resource type="PackedScene" uid="uid://8wv80fi85cj2" path="res://VFX/sibil/sibil_fight.tscn" id="7_pp1d7"]
 [ext_resource type="PackedScene" uid="uid://dklk3d2njec5" path="res://game/cards/card_3d.tscn" id="7_ult0l"]
 [ext_resource type="Script" uid="uid://cvvu1lfwi7b3q" path="res://game/ui/game_hud.gd" id="8_xheak"]
-[ext_resource type="PackedScene" uid="uid://bq703boj20kcj" path="res://art/main_land/Land&Inviormentglb.glb" id="14_3ce54"]
 [ext_resource type="PackedScene" uid="uid://pl5n5xkhucko" path="res://VFX/saw/saw(dirt).tscn" id="17_kqp58"]
 
 [sub_resource type="Environment" id="Environment_g4axw"]
 background_mode = 2
-background_color = Color(1.0378193e-07, 0.009764861, 0.07549808, 1)
-ambient_light_color = Color(0.3733015, 0.89404994, 0.9999998, 1)
-ambient_light_energy = 0.6
+background_color = Color(0.105, 0.145, 0.055, 1)
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 0.85
 
 [node name="MainGame" type="Node3D" unique_id=2055770389]
 
-[node name="BoardVisual" type="Node3D" parent="." unique_id=1145592782]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2.1250865, 0.7928772)
+[node name="BoardVisual" type="Node3D" parent="." unique_id=1145592782 node_paths=PackedStringArray("ground_sprite", "camera_3d")]
+script = ExtResource("1_board25d")
+ground_sprite = NodePath("GroundMap")
+camera_3d = NodePath("../Camera3D")
+world_width = 9.5
+texture_pixel_size = Vector2(2048, 921)
 
-[node name="sky" parent="BoardVisual" unique_id=597714187 instance=ExtResource("1_j7ffe")]
-
-[node name="environment" parent="BoardVisual" unique_id=1436218376 instance=ExtResource("2_kqp58")]
-
-[node name="battleground" parent="BoardVisual" unique_id=297718425 instance=ExtResource("3_g56ji")]
+[node name="GroundMap" type="Sprite3D" parent="BoardVisual"]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, -0.13, -0.35)
+texture = ExtResource("1_ground25d")
+pixel_size = 0.004638672
+shaded = false
+double_sided = true
+cast_shadow = 0
 
 [node name="GameLayout" type="Node3D" parent="." unique_id=1507115213]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)
 script = ExtResource("1_v3atx")
 
 [node name="OpponentHand" type="Node3D" parent="GameLayout" unique_id=1812289617]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02472733, -2.5554361)
+transform = Transform3D(1.05, 0, 0, 0, 1.05, 0, 0, 0, 1.05, 0, 0.08, -2.02)
 
 [node name="OpponentBoard" type="Node3D" parent="GameLayout" unique_id=818209531]
 
@@ -155,7 +159,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.9, -0.3, -1.8)
 logical_id = 3
 
 [node name="PlayerHand" type="Node3D" parent="GameLayout" unique_id=1200663976]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.553, 0.645)
+transform = Transform3D(1.15, 0, 0, 0, 1.15, 0, 0, 0, 1.15, 0, 0.45, 1.8)
 
 [node name="PlayerPiles" type="Node3D" parent="GameLayout" unique_id=1399730841]
 
@@ -188,11 +192,8 @@ pile_type = 2
 
 [node name="RuntimeCards" type="Node3D" parent="." unique_id=179306654]
 
-[node name="GameBalanceScale3d" parent="." unique_id=1049004180 instance=ExtResource("5_8b6m4")]
-transform = Transform3D(0.28066686, 0, 0.95980525, 0, 1, 0, -0.95980525, 0, 0.28066686, -1.1181582, -0.4530015, 0.08330011)
-max_tilt_degrees = 35.0
 
-[node name="MatchController3D" type="Node3D" parent="." unique_id=1855810425 node_paths=PackedStringArray("saw_vfx_spawn", "mustache_vfx_spawn", "game_layout", "runtime_cards", "camera_3d", "hud", "balance_scale")]
+[node name="MatchController3D" type="Node3D" parent="." unique_id=1855810425 node_paths=PackedStringArray("saw_vfx_spawn", "mustache_vfx_spawn", "game_layout", "runtime_cards", "camera_3d", "hud")]
 script = ExtResource("3_g4axw")
 saw_vfx_spawn = NodePath("SawVFXSpawn")
 saw_sound_volume_db = 10.0
@@ -208,7 +209,6 @@ card_scene = ExtResource("7_ult0l")
 runtime_cards = NodePath("../RuntimeCards")
 camera_3d = NodePath("../Camera3D")
 hud = NodePath("../HUD")
-balance_scale = NodePath("../GameBalanceScale3d")
 
 [node name="SawVFXSpawn" type="Node3D" parent="MatchController3D" unique_id=1173535733]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.176, 0.11, 0.002)
@@ -228,7 +228,7 @@ environment = SubResource("Environment_g4axw")
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1052474298]
 transform = Transform3D(1, 0, 0, 0, 0.59622484, 0.80281746, 0, -0.80281746, 0.59622484, 0, 3.066, 2.596)
 fov = 45.0
-size = 0.02
+current = true
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1916526783]
 script = ExtResource("8_xheak")
@@ -323,6 +323,3 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "restart"
 
-[node name="Land&Inviormentglb" parent="." unique_id=484891852 instance=ExtResource("14_3ce54")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.010148585, -2.1840038, 0.76225173)
-visible = false

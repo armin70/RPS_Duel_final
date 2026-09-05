@@ -7,7 +7,7 @@
 script = ExtResource("1")
 active_mana_cost = 2
 active_title = "Fury"
-active_description = "Attack twice this turn. Next turn, any Rostam win becomes a tie."
+active_description = "Attack twice this turn. Next turn Rostam sleeps: every win is treated as a tie."
 card_id = &"hero_rostam"
 display_name = "Rostam"
 mana_cost = 0

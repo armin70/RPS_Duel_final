@@ -5,6 +5,10 @@ const BOARD_MOVE_MANA_COST: int = 1
 const ENERGY_PER_BAR: int = 15
 const MAX_ENERGY_BARS: int = 4
 const MAX_ENERGY_POINTS: int = ENERGY_PER_BAR * MAX_ENERGY_BARS
+const AFRASIAB_POISON_DEFINITION: CardDefinition = preload(
+	"res://data/cards/afrasiab_poison.tres"
+)
+const AFRASIAB_POISON_CARDS_PER_TRIGGER: int = 2
 
 
 func get_board_move_mana_cost() -> int:
@@ -283,8 +287,10 @@ func activate_hero_active(player_id: int) -> bool:
 		HeroDefinition.HeroKind.TAHMINEH:
 			hero.shield_count += 1
 			hero.hero_root_turn = state.turn_number
+			hero.hero_type_lock_turn = state.turn_number
 		HeroDefinition.HeroKind.AFRASIAB:
 			hero.hero_afrasiab_active_turn = state.turn_number
+			hero.hero_afrasiab_poison_triggered_turn = -1
 
 	print(
 		"HERO ACTIVE | player=", player_id,
@@ -303,10 +309,77 @@ func _queue_tahmineh_free_paper(
 	return
 
 
-func _apply_hero_battle_metadata(_act: BattleAct) -> void:
-	# Hero passives are currently disabled. Active scoring is resolved directly
-	# in BattleResolver so presentation order cannot change the result.
-	return
+func _apply_hero_battle_metadata(act: BattleAct) -> void:
+	if act == null or state == null:
+		return
+	if act.type != BattleAct.Type.PLAYER_VS_PLAYER:
+		return
+
+	# Afrasiab Poison Trap only triggers on a real final LOSS against the enemy
+	# Champion/Hero. A shield/heal that converts the loss to a tie prevents it.
+	_try_trigger_afrasiab_poison(
+		act.attacker,
+		act.attacker_owner_id,
+		act.attacker_outcome,
+		act.defender
+	)
+	_try_trigger_afrasiab_poison(
+		act.defender,
+		act.defender_owner_id,
+		act.defender_outcome,
+		act.attacker
+	)
+
+
+func _try_trigger_afrasiab_poison(
+	hero: CardInstance,
+	hero_owner_id: int,
+	outcome: int,
+	opponent_card: CardInstance
+) -> void:
+	if hero == null or opponent_card == null:
+		return
+	if not hero.is_hero_afrasiab_active(state.turn_number):
+		return
+	if outcome != BattleAct.Outcome.LOSS:
+		return
+	if not opponent_card.is_hero():
+		return
+	if hero.hero_afrasiab_poison_triggered_turn == state.turn_number:
+		return
+
+	var hero_def: HeroDefinition = hero.get_hero_definition()
+	if hero_def == null or hero_def.hero_kind != HeroDefinition.HeroKind.AFRASIAB:
+		return
+
+	var opponent_id: int = 2 if hero_owner_id == 1 else 1
+	var opponent: PlayerState = state.get_player(opponent_id)
+	if opponent == null:
+		return
+
+	hero.hero_afrasiab_poison_triggered_turn = state.turn_number
+	var inserted: int = 0
+	for _index: int in range(AFRASIAB_POISON_CARDS_PER_TRIGGER):
+		var poison: CardInstance = card_factory.create_card(
+			AFRASIAB_POISON_DEFINITION,
+			opponent_id
+		)
+		if poison == null:
+			continue
+		poison.zone = CardZone.Type.DRAW
+		poison.current_slot = CardInstance.NO_SLOT
+		opponent.draw_pile.append(poison)
+		inserted += 1
+
+	if inserted > 0:
+		opponent.draw_pile.shuffle()
+
+	print(
+		"AFRASIAB POISON TRAP | owner=", hero_owner_id,
+		" | target=", opponent_id,
+		" | poison_added=", inserted,
+		" | target_draw=", opponent.draw_pile.size()
+	)
 
 
 func _is_guard_card_for_hero(
@@ -709,6 +782,16 @@ func can_cover_card(
 	if target_card.definition == null:
 		return false
 
+	# Poison is a curse card: paying its 5 mana cost on an empty legal slot
+	# cleanses it. It can never Cover another card or be used to type-change a Hero.
+	if card.definition.card_id == &"afrasiab_poison":
+		return false
+
+	# Tahmineh cannot have her type changed on the turn her Active is used.
+	# Centralizing this in Cover validation blocks both Hand->Hero and Board->Hero.
+	if target_card.is_hero() and target_card.is_hero_type_locked(state.turn_number):
+		return false
+
 	var turns_since_played: int = state.turn_number - target_card.turn_played
 	if turns_since_played < 1:
 		return false
@@ -956,6 +1039,31 @@ func move_board_card(
 		board_before
 	)
 	return true
+
+
+func _apply_poison_hand_damage(player: PlayerState) -> int:
+	if player == null or player.hero == null:
+		return 0
+
+	var poison_count: int = 0
+	for card: CardInstance in player.hand:
+		if card == null or card.definition == null:
+			continue
+		if card.definition.card_id == &"afrasiab_poison":
+			poison_count += 1
+
+	if poison_count <= 0:
+		return 0
+
+	var damage: int = mini(poison_count, maxi(0, player.hero.hero_health))
+	player.hero.hero_health = maxi(0, player.hero.hero_health - damage)
+	print(
+		"POISON HAND DAMAGE | player=", player.player_id,
+		" | poison=", poison_count,
+		" | damage=", damage,
+		" | hero_hp=", player.hero.hero_health, "/", player.hero.hero_max_health
+	)
+	return damage
 
 
 func _start_new_turn_for_player(
@@ -1210,26 +1318,6 @@ func apply_battle_act(
 		)
 
 	act.resolved = true
-
-	# Changeling/Engineer type changes are intentionally deferred until the
-	# entire battle phase has resolved. Apply them as soon as the LAST act is
-	# resolved so the controller's normal post-act visual refresh can show the
-	# new artwork/type immediately on the card.
-	if _are_all_active_battle_acts_resolved():
-		_apply_pending_card_definition_changes()
-
-	return true
-
-
-func _are_all_active_battle_acts_resolved() -> bool:
-	if active_battle_sequence == null:
-		return false
-
-	for battle_act: BattleAct in active_battle_sequence.acts:
-		if battle_act == null:
-			continue
-		if not battle_act.resolved:
-			return false
 
 	return true
 
@@ -2251,6 +2339,13 @@ func finish_combat() -> bool:
 
 	# Cleanup is complete. Any survivor directly behind an empty Front advances.
 	_normalize_all_player_front_rows()
+
+	# Poison punishes every copy that was kept in Hand through the turn. Damage
+	# happens before the old Hand is discarded/replaced, and it ignores shields.
+	_apply_poison_hand_damage(state.player_one)
+	_apply_poison_hand_damage(state.player_two)
+	if not state.rush_mode_enabled and _check_hero_health_victory():
+		return false
 
 	if state.rush_mode_enabled:
 		# Direct PvP elimination has priority. If a player lost their final card

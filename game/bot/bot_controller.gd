@@ -136,7 +136,9 @@ func _make_fair_card_snapshot(
 	snapshot.hero_fury_turn = card.hero_fury_turn
 	snapshot.hero_sleep_turn = card.hero_sleep_turn
 	snapshot.hero_root_turn = card.hero_root_turn
+	snapshot.hero_type_lock_turn = card.hero_type_lock_turn
 	snapshot.hero_afrasiab_active_turn = card.hero_afrasiab_active_turn
+	snapshot.hero_afrasiab_poison_triggered_turn = card.hero_afrasiab_poison_triggered_turn
 	snapshot.hero_stealth_turn = card.hero_stealth_turn
 	snapshot.hero_revealed = card.hero_revealed
 	snapshot.hero_health = card.hero_health
@@ -384,28 +386,25 @@ func _score_hero_active_use(
 				score -= 3.0
 
 		HeroDefinition.HeroKind.AFRASIAB:
-			# Gambit wants ties and dislikes losses. Estimate all visible clashes
-			# involving Afrasiab this turn and only spend mana with a positive edge.
-			var expected_bonus: float = 0.0
+			# Poison Trap is only worth arming when Afrasiab is currently expected
+			# to lose a direct clash against the enemy Champion/Hero.
+			var losing_to_enemy_champion: bool = false
 			for target_slot: int in _get_opponent_target_slots(hero.current_slot):
-				var target: CardInstance = _get_visible_opponent_card(state, opponent, target_slot)
-				if target == null:
+				var target: CardInstance = _get_visible_opponent_card(
+					state, opponent, target_slot
+				)
+				if target == null or not target.is_hero():
 					continue
-				var outcome: int = _predict_pvp_outcome(state, hero, target)
-				if outcome == BattleAct.Outcome.TIE:
-					expected_bonus += 3.0
-				elif outcome == BattleAct.Outcome.LOSS:
-					expected_bonus -= 2.0
-			for dealer_slot: int in _get_dealer_target_slots(state, bot, hero, hero.current_slot):
-				var dealer_card: CardInstance = state.dealer.slots.get(dealer_slot, null) as CardInstance
-				if dealer_card == null:
-					continue
-				var dealer_outcome: int = _compare_gestures(hero.get_gesture(), dealer_card.get_gesture())
-				if dealer_outcome == BattleAct.Outcome.TIE:
-					expected_bonus += 3.0
-				elif dealer_outcome == BattleAct.Outcome.LOSS:
-					expected_bonus -= 2.0
-			score += expected_bonus * 1.5
+				if _predict_pvp_outcome(state, hero, target) == BattleAct.Outcome.LOSS:
+					losing_to_enemy_champion = true
+					break
+
+			if losing_to_enemy_champion:
+				score += 20.0
+				if opponent.current_mana < 5:
+					score += 4.0
+			else:
+				score -= 24.0
 
 	return score
 
@@ -1216,6 +1215,8 @@ func _try_strategic_hero_type_change(
 		return false
 	if bot.board.get_card(hero.current_slot) != hero:
 		return false
+	if hero.is_hero_type_locked(state.turn_number):
+		return false
 
 	var hero_slot: int = hero.current_slot
 	var old_gesture: CardGesture.Type = hero.get_gesture()
@@ -1445,6 +1446,12 @@ func _is_legal_play_candidate(
 	if replaced_card == null:
 		return true
 
+	if card.definition.behavior is PoisonBehavior:
+		return false
+
+	if replaced_card.is_hero() and replaced_card.is_hero_type_locked(state.turn_number):
+		return false
+
 	if replaced_card.definition == null:
 		return false
 
@@ -1476,6 +1483,11 @@ func _score_play_candidate(
 	card: CardInstance,
 	slot_id: int
 ) -> float:
+	if card != null and card.definition != null and card.definition.behavior is PoisonBehavior:
+		# Paying 5 mana prevents the guaranteed end-of-turn Champion damage and
+		# removes the curse from Hand. Prefer cleansing when an empty legal slot exists.
+		return 16.0 - float(card.get_mana_cost()) * 0.25
+
 	var score: float = 0.0
 
 	# خرج Mana مهم است، ولی نباید باعث شود ربات
@@ -1945,59 +1957,9 @@ func _score_special_behavior(
 		return bfg_bonus
 
 	if behavior is TauntBehavior:
-		# Taunt protects only friendly cards that would lose their normal RPS
-		# clash. Value it by the threatened cards in this lane, not as a generic
-		# "fight everything" card.
-		var taunt_lane: int = SlotID.get_lane(slot_id)
-		var threatened_count: int = 0
-		var protected_value: float = 0.0
-
-		for own_slot: int in SlotID.all_slots():
-			if SlotID.get_lane(own_slot) != taunt_lane:
-				continue
-
-			var own_card: CardInstance = bot.board.get_card(own_slot)
-			if own_card == null:
-				continue
-			if own_card.definition != null and own_card.definition.behavior is TauntBehavior:
-				continue
-
-			var is_threatened: bool = false
-			for enemy_slot: int in SlotID.all_slots():
-				if SlotID.get_lane(enemy_slot) != taunt_lane:
-					continue
-
-				var enemy_card: CardInstance = _get_visible_opponent_card(
-					state, opponent, enemy_slot
-				)
-				if enemy_card == null:
-					continue
-
-				if (
-					_compare_gestures(
-						enemy_card.get_gesture(),
-						own_card.get_gesture()
-					)
-					== BattleAct.Outcome.WIN
-				):
-					is_threatened = true
-					break
-
-			if is_threatened:
-				threatened_count += 1
-				protected_value += minf(
-					8.0,
-					_card_importance(own_card) * 0.45
-				)
-
-		var taunt_behavior := behavior as TauntBehavior
-		var shield_value: float = float(taunt_behavior.starting_shields) * 1.5
-		return (
-			5.0
-			+ shield_value
-			+ float(threatened_count) * 3.0
-			+ protected_value
-		)
+		# Taunt is valuable when this card is not a terrible matchup and can soak
+		# pressure away from the rest of the column. Avoid over-prioritizing it.
+		return 5.0 + float(card.shield_count) * 2.0
 
 	if behavior is MommyBehavior:
 		return 7.0

@@ -7,8 +7,8 @@
 script = ExtResource("1")
 hero_kind = 2
 active_mana_cost = 2
-active_title = "Gambit"
-active_description = "This turn, each tie gives +3 points; each loss gives -2 points."
+active_title = "Poison Trap"
+active_description = "If Afrasiab loses to the enemy Champion this turn, shuffle 2 Poison cards into that opponent deck. Poison costs 5 mana; each Poison left in hand deals 1 damage to its Champion."
 card_id = &"hero_afrasiab"
 display_name = "Afrasiab"
 gesture = 2

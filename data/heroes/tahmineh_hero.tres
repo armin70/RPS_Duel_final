@@ -7,8 +7,8 @@
 script = ExtResource("1")
 hero_kind = 1
 active_mana_cost = 2
-active_title = "Shield Root"
-active_description = "Gain 1 shield. Tahmineh cannot move for the rest of this turn."
+active_title = "Shield Lock"
+active_description = "Gain 1 shield. Tahmineh is rooted and cannot change type for the rest of this turn."
 card_id = &"hero_tahmineh"
 display_name = "Tahmineh"
 gesture = 1
