@@ -157,12 +157,15 @@ var board_reflow_time: float = 0.16
 @export_range(0.10, 0.75, 0.05)
 var early_drop_highlight_progress_ratio: float = 0.25
 
-# In the new perspective 2.5D layout the far rows occupy fewer pixels than the
-# near row. RayCast alone can therefore miss valid upper-row Area3D targets.
-# This screen-space radius is used as a perspective-safe fallback for both
-# highlight and final drop selection.
-@export_range(45.0, 180.0, 5.0)
-var projected_slot_pick_radius_px: float = 90.0
+# In the new 2.5D perspective layout the far/top board slots occupy much less
+# screen space than the near/bottom row. Physics ray hits alone therefore make
+# the top and middle slots unnecessarily hard to target. This extra screen-space
+# margin keeps every printed slot equally usable on desktop and mobile.
+@export_category("2.5D Board Slot Picking")
+@export_range(0.0, 80.0, 1.0)
+var board_slot_screen_pick_margin_px: float = 28.0
+@export_range(1.0, 2.0, 0.05)
+var board_slot_screen_pick_extent_scale: float = 1.35
 
 
 @export_category("Bot and Reveal")
@@ -1548,11 +1551,17 @@ func _prepare_bot_turn() -> void:
 		_try_bot_special_attack()
 		if state.is_game_over():
 			return
+		# First chance: use an already-good Hero active before spending mana.
 		_try_bot_hero_active()
 		bot_controller.play_turn(
 			engine,
 			bot_player_id
 		)
+		# Second chance: the bot may have moved its Hero, changed a matchup,
+		# or created a new Poison/Fury opportunity during play_turn().
+		# try_activate_hero_power() is safe to call twice because the engine
+		# rejects a Hero active that was already used this turn.
+		_try_bot_hero_active()
 
 	pending_bot_plays = engine.consume_play_records(
 		bot_player_id
@@ -3596,14 +3605,7 @@ func _get_early_drop_highlight_place(
 			current_distance / route_distance
 		)
 
-		var close_to_projected_slot: bool = (
-			current_distance <= _get_projected_slot_pick_radius()
-		)
-
-		if (
-			route_progress < early_drop_highlight_progress_ratio
-			and not close_to_projected_slot
-		):
+		if route_progress < early_drop_highlight_progress_ratio:
 			continue
 
 		if current_distance < closest_distance:
@@ -3613,103 +3615,122 @@ func _get_early_drop_highlight_place(
 	return closest_place
 
 
-func _get_projected_slot_pick_radius() -> float:
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+func _get_place_under_mouse(
+	screen_position: Vector2
+) -> CardPlace3D:
+	if camera_3d == null:
+		return null
 
-	if viewport_size.y <= 0.0:
-		return projected_slot_pick_radius_px
-
-	# Scale gently with resolution while keeping the editor value as a useful
-	# minimum. On a 720-900px-tall game window this is roughly 90-100px.
-	return maxf(
-		projected_slot_pick_radius_px,
-		viewport_size.y * 0.105
+	# Prefer the real Area3D hit when the projected collision shape is large
+	# enough. This preserves exact behavior for the near/bottom slots.
+	var ray_origin: Vector3 = camera_3d.project_ray_origin(
+		screen_position
 	)
+	var ray_direction: Vector3 = camera_3d.project_ray_normal(
+		screen_position
+	)
+	var query := PhysicsRayQueryParameters3D.create(
+		ray_origin,
+		ray_origin + ray_direction * 1000.0
+	)
+	query.collision_mask = SLOT_COLLISION_MASK
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+
+	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(
+		query
+	)
+	if not result.is_empty():
+		var exact_place := result.get(
+			"collider",
+			null
+		) as CardPlace3D
+		if exact_place != null:
+			return exact_place
+
+	# Perspective fallback: select the nearest local board slot by its actual
+	# projected on-screen footprint. Far/top rows get an explicit pixel margin,
+	# so they are just as easy to highlight and drop onto as the bottom row.
+	return _get_local_board_place_from_screen_space(screen_position)
 
 
-func _get_nearest_local_board_place_on_screen(
+func _get_local_board_place_from_screen_space(
 	screen_position: Vector2
 ) -> CardPlace3D:
 	if camera_3d == null or game_layout == null:
 		return null
 
-	var closest_place: CardPlace3D
-	var closest_distance: float = _get_projected_slot_pick_radius()
+	var best_place: CardPlace3D
+	var best_score: float = INF
 
 	for slot_id: int in SlotID.all_slots():
 		var place: CardPlace3D = game_layout.get_board_place(
 			local_player_id,
 			slot_id
 		)
-
-		if place == null or place.card_anchor == null:
+		if place == null:
 			continue
 
-		var world_position: Vector3 = place.card_anchor.global_position
+		var center_world: Vector3 = place.global_position
+		if place.card_anchor != null:
+			center_world = place.card_anchor.global_position
 
-		if camera_3d.is_position_behind(world_position):
+		if camera_3d.is_position_behind(center_world):
 			continue
 
-		var projected_position: Vector2 = camera_3d.unproject_position(
-			world_position
-		)
-		var distance: float = screen_position.distance_to(
-			projected_position
+		var center_screen: Vector2 = camera_3d.unproject_position(
+			center_world
 		)
 
-		if distance > closest_distance:
+		# CardPlace3D's original collision box is 0.32 x 0.449. Project
+		# comparable X/Z extents through the real camera, then expand them by
+		# a constant screen margin. This automatically compensates for depth.
+		var local_half_x: float = 0.16 * board_slot_screen_pick_extent_scale
+		var local_half_z: float = 0.2245 * board_slot_screen_pick_extent_scale
+		var world_x_offset: Vector3 = place.global_transform.basis * Vector3(
+			local_half_x,
+			0.0,
+			0.0
+		)
+		var world_z_offset: Vector3 = place.global_transform.basis * Vector3(
+			0.0,
+			0.0,
+			local_half_z
+		)
+
+		var x_edge_screen: Vector2 = camera_3d.unproject_position(
+			center_world + world_x_offset
+		)
+		var z_edge_screen: Vector2 = camera_3d.unproject_position(
+			center_world + world_z_offset
+		)
+
+		var half_width_px: float = maxf(
+			18.0,
+			center_screen.distance_to(x_edge_screen)
+		) + board_slot_screen_pick_margin_px
+		var half_height_px: float = maxf(
+			22.0,
+			center_screen.distance_to(z_edge_screen)
+		) + board_slot_screen_pick_margin_px
+
+		var delta: Vector2 = screen_position - center_screen
+		if absf(delta.x) > half_width_px:
+			continue
+		if absf(delta.y) > half_height_px:
 			continue
 
-		closest_distance = distance
-		closest_place = place
-
-	return closest_place
-
-
-func _get_place_under_mouse(
-	screen_position: Vector2
-) -> CardPlace3D:
-	var ray_origin: Vector3 = \
-		camera_3d.project_ray_origin(
-			screen_position
+		# Normalized ellipse score chooses the correct slot if the expanded
+		# screen footprints overlap around a row boundary.
+		var score: float = (
+			pow(delta.x / half_width_px, 2.0)
+			+ pow(delta.y / half_height_px, 2.0)
 		)
+		if score < best_score:
+			best_score = score
+			best_place = place
 
-	var ray_direction: Vector3 = \
-		camera_3d.project_ray_normal(
-			screen_position
-		)
-
-	var query := \
-		PhysicsRayQueryParameters3D.create(
-			ray_origin,
-			ray_origin + ray_direction * 1000.0
-		)
-
-	query.collision_mask = SLOT_COLLISION_MASK
-	query.collide_with_areas = true
-	query.collide_with_bodies = false
-
-	var result: Dictionary = \
-		get_world_3d().direct_space_state.intersect_ray(
-			query
-		)
-
-	if not result.is_empty():
-		var ray_place := result.get(
-			"collider",
-			null
-		) as CardPlace3D
-
-		if ray_place != null:
-			return ray_place
-
-	# Perspective-safe fallback:
-	# far board rows are visually smaller, so use their projected screen
-	# centers when the 3D collider is missed. This is also used by final drop,
-	# so highlight and actual placement can no longer disagree.
-	return _get_nearest_local_board_place_on_screen(
-		screen_position
-	)
+	return best_place
 
 
 func _refresh_hand_positions() -> void:

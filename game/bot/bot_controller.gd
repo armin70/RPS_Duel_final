@@ -12,7 +12,11 @@ const HARDCORE_SETTING: StringName = &"gameplay/hardcore_bot"
 # position is meaningfully better.
 const STRATEGIC_MOVE_MIN_IMPROVEMENT: float = 4.0
 const STRATEGIC_MOVE_MANA_PENALTY: float = 1.15
-const HERO_ACTIVE_MIN_SCORE: float = 3.0
+# Hero actives are meant to be a visible part of the bot's identity.
+# Keep the threshold low enough that the bot uses a useful active instead of
+# hoarding it for a perfect situation.
+const HERO_ACTIVE_MIN_SCORE: float = 0.0
+const HERO_ACTIVE_MANA_RESERVE_BONUS: float = 1.75
 const EXPOSED_HERO_HIT_VALUE: float = 8.0
 const HERO_HEALTH_DAMAGE_VALUE: float = 14.0
 const HERO_KILL_VALUE: float = 45.0
@@ -343,7 +347,11 @@ func _score_hero_active_use(
 	if not SlotID.is_valid(hero.current_slot):
 		return INVALID_SCORE
 
-	var score: float = -float(hero_def.active_mana_cost) * 0.7
+	# Active mana is deliberately priced lightly. The old 0.7 multiplier made
+	# the bot hoard mana and almost never showcase its Hero ability.
+	var score: float = -float(hero_def.active_mana_cost) * 0.25
+	if bot.current_mana >= hero_def.active_mana_cost + 2:
+		score += HERO_ACTIVE_MANA_RESERVE_BONUS
 	var immediate_risk: float = _hero_immediate_risk(
 		state, bot, opponent, hero, hero.current_slot
 	)
@@ -369,21 +377,29 @@ func _score_hero_active_use(
 					win_targets += 1
 					score += 2.5
 			if win_targets == 0:
-				score -= 8.0
-			score -= 2.0 # next-turn Sleep cost
+				# Do not burn Fury into a completely empty/no-win board, but keep
+				# the penalty small enough that one meaningful win is sufficient.
+				score -= 3.0
+			score -= 1.0 # next-turn Sleep cost
 
 		HeroDefinition.HeroKind.TAHMINEH:
-			# Shield + Root is most valuable when a Hero-vs-Hero hit could remove
-			# a scarce HP, but it is still a real movement tradeoff.
-			score += immediate_risk * 1.1
+			# Tahmineh's shield is useful even before a crisis. Root + type-lock
+			# are real costs, but the bot should proactively protect her instead
+			# of waiting until she is almost dead.
+			score += 2.5
+			score += immediate_risk * 1.35
 			if hero.shield_count <= 0:
-				score += 6.0
+				score += 5.0
+			elif hero.shield_count == 1:
+				score += 2.0
+			if hero.hero_health <= 3:
+				score += 3.0
 			if hero.hero_health <= 2:
-				score += 6.0
+				score += 4.0
 			if hero.hero_health <= 1:
-				score += 8.0
-			if immediate_risk < 1.0:
-				score -= 3.0
+				score += 7.0
+			if immediate_risk < 1.0 and hero.shield_count >= 2:
+				score -= 2.0
 
 		HeroDefinition.HeroKind.AFRASIAB:
 			# Poison Trap is only worth arming when Afrasiab is currently expected
