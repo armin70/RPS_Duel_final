@@ -381,16 +381,15 @@ func _try_trigger_afrasiab_poison(
 		poison.zone = CardZone.Type.DRAW
 		poison.current_slot = CardInstance.NO_SLOT
 
-		# Insert the curse at a random position inside the existing Draw Pile.
-		# Do NOT shuffle the opponent's whole deck and do NOT put it directly
-		# into Hand. Each Poison gets its own independent random position.
-		var random_draw_index: int = randi_range(
-			0,
-			opponent.draw_pile.size()
-		)
-		opponent.draw_pile.insert(random_draw_index, poison)
+		# Poison goes ONLY into the opponent Draw Pile. It is never pushed
+		# directly into Hand. After both cards are added, the Draw Pile is
+		# shuffled so future draws determine when the Poison appears.
+		opponent.draw_pile.append(poison)
 		inserted_poison_cards.append(poison)
 		inserted += 1
+
+	if inserted > 0:
+		opponent.draw_pile.shuffle()
 
 	if not inserted_poison_cards.is_empty():
 		afrasiab_poison_inserted.emit(

@@ -10,19 +10,19 @@ func on_played_to_board(context: CardBehaviorContext) -> void:
 	if owner == null or owner.board == null:
 		return
 
-	# Poison is a curse, not a combat card. Paying its 4 mana cost by playing
-	# it onto any empty legal slot immediately cleanses it into Discard.
+	# Poison is a curse, not a combat card. Playing it pays its mana cost.
+	# Once used/cleansed, it is removed from the match completely:
+	# it must NOT go to Discard and must NOT return on a later shuffle.
 	var removed: CardInstance = owner.board.remove_card(context.slot_id)
 	if removed != context.source_card:
 		if removed != null:
 			owner.board.place_card(context.slot_id, removed)
 		return
 
-	removed.zone = CardZone.Type.DISCARD
+	removed.zone = CardZone.Type.REMOVED
 	removed.current_slot = CardInstance.NO_SLOT
-	owner.discard_pile.append(removed)
 
 	print(
-		"POISON CLEANSED | player=", context.owner_id,
+		"POISON REMOVED | player=", context.owner_id,
 		" | mana_cost=", removed.get_mana_cost()
 	)
