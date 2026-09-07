@@ -274,6 +274,13 @@ const HERO_ACTIVE_FEEDBACK_DURATION: float = 0.95
 const HERO_ACTIVE_FEEDBACK_RADIUS: float = 0.46
 const HERO_ACTIVE_FEEDBACK_RISE: float = 0.38
 
+# Afrasiab gets a stronger armed/triggered presentation because the effect is
+# delayed until he loses to the opposing Champion later in the battle.
+const AFRASIAB_ACTIVE_FEEDBACK_DURATION: float = 1.35
+const AFRASIAB_POISON_FLY_TIME: float = 0.52
+const AFRASIAB_POISON_FLY_STAGGER: float = 0.16
+const AFRASIAB_POISON_FLY_HEIGHT: float = 0.72
+
 
 func _ready() -> void:
 	# The transparent menu finds this controller through the group.
@@ -671,71 +678,380 @@ func _play_hero_active_ground_feedback(player_id: int) -> void:
 	if hero_view == null or not is_instance_valid(hero_view):
 		return
 
+	var is_afrasiab: bool = (
+		hero_def.hero_kind == HeroDefinition.HeroKind.AFRASIAB
+	)
+	var feedback_duration: float = (
+		AFRASIAB_ACTIVE_FEEDBACK_DURATION
+		if is_afrasiab
+		else HERO_ACTIVE_FEEDBACK_DURATION
+	)
+
 	var effect_root := Node3D.new()
 	effect_root.name = "HeroActiveFeedback_%s" % hero_def.kind_name()
 	runtime_cards.add_child(effect_root)
-	effect_root.global_position = hero_view.global_position + Vector3(0.0, 0.14, 0.0)
+	effect_root.global_position = (
+		hero_view.global_position
+		+ Vector3(0.0, 0.14, 0.0)
+	)
 
 	# A thin glowing disk expands just above the Hero card, so it never
 	# disappears under the table/board mesh.
 	var pulse := MeshInstance3D.new()
 	pulse.name = "GroundPulse"
 	var pulse_mesh := CylinderMesh.new()
-	pulse_mesh.top_radius = HERO_ACTIVE_FEEDBACK_RADIUS
-	pulse_mesh.bottom_radius = HERO_ACTIVE_FEEDBACK_RADIUS
+	pulse_mesh.top_radius = (
+		HERO_ACTIVE_FEEDBACK_RADIUS * 1.22
+		if is_afrasiab
+		else HERO_ACTIVE_FEEDBACK_RADIUS
+	)
+	pulse_mesh.bottom_radius = pulse_mesh.top_radius
 	pulse_mesh.height = 0.012
 	pulse.mesh = pulse_mesh
-	pulse.scale = Vector3(0.24, 1.0, 0.24)
+	pulse.scale = Vector3(0.20, 1.0, 0.20)
 	pulse.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pulse.transparency = 0.12
+	pulse.transparency = 0.08
 
 	var pulse_material := StandardMaterial3D.new()
 	pulse_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if player_id == local_player_id:
+	if is_afrasiab:
+		# Poison Trap has its own unmistakable purple/green identity.
+		pulse_material.albedo_color = Color(0.72, 0.20, 0.96, 1.0)
+	elif player_id == local_player_id:
 		pulse_material.albedo_color = Color(0.20, 0.90, 1.0, 1.0)
 	else:
 		pulse_material.albedo_color = Color(1.0, 0.34, 0.26, 1.0)
 	pulse.material_override = pulse_material
 	effect_root.add_child(pulse)
 
+	# Afrasiab gets a second outer pulse so "armed" cannot be confused with a
+	# normal card highlight.
+	var outer_pulse: MeshInstance3D = null
+	if is_afrasiab:
+		outer_pulse = MeshInstance3D.new()
+		outer_pulse.name = "PoisonTrapOuterPulse"
+		var outer_mesh := CylinderMesh.new()
+		outer_mesh.top_radius = HERO_ACTIVE_FEEDBACK_RADIUS * 1.55
+		outer_mesh.bottom_radius = HERO_ACTIVE_FEEDBACK_RADIUS * 1.55
+		outer_mesh.height = 0.009
+		outer_pulse.mesh = outer_mesh
+		outer_pulse.scale = Vector3(0.18, 1.0, 0.18)
+		outer_pulse.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
+		outer_pulse.transparency = 0.22
+		var outer_material := StandardMaterial3D.new()
+		outer_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		outer_material.albedo_color = Color(0.36, 1.0, 0.34, 1.0)
+		outer_pulse.material_override = outer_material
+		effect_root.add_child(outer_pulse)
+
 	var label := Label3D.new()
 	label.name = "ActivePowerLabel"
 	label.position = Vector3(0.0, HERO_ACTIVE_FEEDBACK_RISE, 0.0)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	label.no_depth_test = true
-	label.font_size = 34
-	label.outline_size = 8
-	label.text = (
-		"%s ACTIVE!" % hero_def.active_title
-		if player_id == local_player_id
-		else "OPPONENT: %s" % hero_def.active_title
-	)
+	label.font_size = 42 if is_afrasiab else 34
+	label.outline_size = 10 if is_afrasiab else 8
+
+	if is_afrasiab:
+		label.text = (
+			"POISON TRAP ARMED!"
+			if player_id == local_player_id
+			else "ENEMY POISON TRAP ARMED!"
+		)
+	else:
+		label.text = (
+			"%s ACTIVE!" % hero_def.active_title
+			if player_id == local_player_id
+			else "OPPONENT: %s" % hero_def.active_title
+		)
+
 	effect_root.add_child(label)
+
+	# Make Afrasiab's card itself punch forward twice when the trap is armed.
+	if is_afrasiab:
+		var original_scale: Vector3 = hero_view.scale
+		var hero_pulse_tween := create_tween()
+		hero_pulse_tween.tween_property(
+			hero_view,
+			"scale",
+			original_scale * 1.13,
+			0.11
+		).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		hero_pulse_tween.tween_property(
+			hero_view,
+			"scale",
+			original_scale,
+			0.12
+		)
+		hero_pulse_tween.tween_property(
+			hero_view,
+			"scale",
+			original_scale * 1.08,
+			0.10
+		)
+		hero_pulse_tween.tween_property(
+			hero_view,
+			"scale",
+			original_scale,
+			0.14
+		)
 
 	var tween := create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(
 		pulse,
 		"scale",
-		Vector3(1.55, 1.0, 1.55),
-		HERO_ACTIVE_FEEDBACK_DURATION
+		Vector3(1.65, 1.0, 1.65),
+		feedback_duration
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(
 		pulse,
 		"transparency",
 		1.0,
-		HERO_ACTIVE_FEEDBACK_DURATION
+		feedback_duration
 	)
+	if outer_pulse != null:
+		tween.tween_property(
+			outer_pulse,
+			"scale",
+			Vector3(1.30, 1.0, 1.30),
+			feedback_duration
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tween.tween_property(
+			outer_pulse,
+			"transparency",
+			1.0,
+			feedback_duration
+		)
 	tween.tween_property(
 		label,
 		"position",
-		Vector3(0.0, HERO_ACTIVE_FEEDBACK_RISE + 0.18, 0.0),
-		HERO_ACTIVE_FEEDBACK_DURATION
+		Vector3(0.0, HERO_ACTIVE_FEEDBACK_RISE + 0.22, 0.0),
+		feedback_duration
 	)
 
 	await tween.finished
 	if is_instance_valid(effect_root):
 		effect_root.queue_free()
+
+
+func _on_afrasiab_poison_inserted(
+	source_player_id: int,
+	target_player_id: int,
+	poison_cards: Array
+) -> void:
+	_play_afrasiab_poison_insert_feedback(
+		source_player_id,
+		target_player_id,
+		poison_cards
+	)
+
+
+func _play_afrasiab_poison_insert_feedback(
+	source_player_id: int,
+	target_player_id: int,
+	poison_cards: Array
+) -> void:
+	if state == null:
+		return
+	if not is_instance_valid(runtime_cards):
+		return
+	if not is_instance_valid(game_layout):
+		return
+
+	var source_player: PlayerState = state.get_player(source_player_id)
+	if source_player == null or source_player.hero == null:
+		return
+
+	var hero_view := card_views.get(
+		source_player.hero.instance_id,
+		null
+	) as Card3D
+	if hero_view == null or not is_instance_valid(hero_view):
+		return
+
+	var draw_pile := game_layout.get_pile_entity(
+		target_player_id,
+		CardPile3D.Type.DRAW
+	)
+	if draw_pile == null:
+		return
+
+	var source_position: Vector3 = (
+		hero_view.global_position
+		+ Vector3(0.0, 0.24, 0.0)
+	)
+	var target_position: Vector3 = (
+		draw_pile.global_position
+		+ Vector3(0.0, 0.18, 0.0)
+	)
+
+	# Make the trap firing itself explicit before the two cards travel.
+	var trigger_root := Node3D.new()
+	trigger_root.name = "AfrasiabPoisonTriggered"
+	runtime_cards.add_child(trigger_root)
+	trigger_root.global_position = source_position
+
+	var trigger_label := Label3D.new()
+	trigger_label.name = "PoisonTrapTriggeredLabel"
+	trigger_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	trigger_label.no_depth_test = true
+	trigger_label.font_size = 38
+	trigger_label.outline_size = 10
+	trigger_label.text = "POISON TRAP TRIGGERED!"
+	trigger_root.add_child(trigger_label)
+
+	var trigger_tween := create_tween()
+	trigger_tween.set_parallel(true)
+	trigger_tween.tween_property(
+		trigger_label,
+		"position",
+		Vector3(0.0, 0.34, 0.0),
+		0.85
+	)
+	trigger_tween.tween_property(
+		trigger_label,
+		"modulate:a",
+		0.0,
+		0.85
+	)
+	trigger_tween.chain().tween_callback(
+		Callable(trigger_root, "queue_free")
+	)
+
+	# The pile itself flashes and explicitly reports the exact number added.
+	var pile_fx := Node3D.new()
+	pile_fx.name = "AfrasiabPoisonDrawPileFeedback"
+	runtime_cards.add_child(pile_fx)
+	pile_fx.global_position = target_position
+
+	var pile_pulse := MeshInstance3D.new()
+	var pile_mesh := CylinderMesh.new()
+	pile_mesh.top_radius = HERO_ACTIVE_FEEDBACK_RADIUS * 1.05
+	pile_mesh.bottom_radius = HERO_ACTIVE_FEEDBACK_RADIUS * 1.05
+	pile_mesh.height = 0.014
+	pile_pulse.mesh = pile_mesh
+	pile_pulse.scale = Vector3(0.20, 1.0, 0.20)
+	pile_pulse.cast_shadow = (
+		GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	)
+	pile_pulse.transparency = 0.10
+	var pile_material := StandardMaterial3D.new()
+	pile_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pile_material.albedo_color = Color(0.58, 0.16, 0.92, 1.0)
+	pile_pulse.material_override = pile_material
+	pile_fx.add_child(pile_pulse)
+
+	var pile_label := Label3D.new()
+	pile_label.position = Vector3(0.0, 0.34, 0.0)
+	pile_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	pile_label.no_depth_test = true
+	pile_label.font_size = 38
+	pile_label.outline_size = 10
+	pile_label.text = "+%d POISON\nDRAW PILE" % poison_cards.size()
+	pile_fx.add_child(pile_label)
+
+	var pile_tween := create_tween()
+	pile_tween.set_parallel(true)
+	pile_tween.tween_property(
+		pile_pulse,
+		"scale",
+		Vector3(1.55, 1.0, 1.55),
+		1.15
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	pile_tween.tween_property(
+		pile_pulse,
+		"transparency",
+		1.0,
+		1.15
+	)
+	pile_tween.tween_property(
+		pile_label,
+		"position",
+		Vector3(0.0, 0.54, 0.0),
+		1.15
+	)
+	pile_tween.chain().tween_callback(
+		Callable(pile_fx, "queue_free")
+	)
+
+	# Show the ACTUAL two Poison CardInstances face-up while they fly into the
+	# target Draw Pile. They remain in MatchState.zone == DRAW the entire time;
+	# these are temporary presentation views only.
+	for index: int in range(poison_cards.size()):
+		var poison := poison_cards[index] as CardInstance
+		if poison == null:
+			continue
+
+		var start_transform: Transform3D = hero_view.global_transform
+		var side: float = (
+			float(index)
+			- float(poison_cards.size() - 1) * 0.5
+		)
+		start_transform.origin = (
+			source_position
+			+ Vector3(side * 0.14, 0.0, 0.0)
+		)
+
+		var poison_view: Card3D = _create_card_view(
+			poison,
+			start_transform,
+			false,
+			true,
+			false
+		)
+		if poison_view == null:
+			continue
+
+		poison_view.is_draggable = false
+		poison_view.input_ray_pickable = false
+		poison_view.scale *= 0.90
+
+		var fly_delay: float = (
+			float(index) * AFRASIAB_POISON_FLY_STAGGER
+		)
+		var middle_position: Vector3 = (
+			(source_position + target_position) * 0.5
+			+ Vector3(
+				side * 0.18,
+				AFRASIAB_POISON_FLY_HEIGHT,
+				0.0
+			)
+		)
+		var final_position: Vector3 = (
+			target_position
+			+ Vector3(side * 0.06, 0.0, 0.0)
+		)
+
+		var fly_tween := create_tween()
+		if fly_delay > 0.0:
+			fly_tween.tween_interval(fly_delay)
+		fly_tween.tween_property(
+			poison_view,
+			"global_position",
+			middle_position,
+			AFRASIAB_POISON_FLY_TIME * 0.45
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		fly_tween.tween_property(
+			poison_view,
+			"global_position",
+			final_position,
+			AFRASIAB_POISON_FLY_TIME * 0.55
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		fly_tween.tween_property(
+			poison_view,
+			"scale",
+			poison_view.scale * 0.16,
+			0.12
+		)
+		fly_tween.tween_callback(
+			Callable(poison_view, "queue_free")
+		)
+
+	# The stack/count can update immediately; the flying cards explain why.
+	_refresh_pile_entities()
 
 
 func _ensure_rush_sacrifice_control() -> void:
@@ -1404,6 +1720,17 @@ func _start_match_with_selected_deck(
 		player_one_deck = selected_deck
 
 	engine = MatchEngine.new()
+	var poison_feedback_callable := Callable(
+		self,
+		"_on_afrasiab_poison_inserted"
+	)
+	if not engine.afrasiab_poison_inserted.is_connected(
+		poison_feedback_callable
+	):
+		engine.afrasiab_poison_inserted.connect(
+			poison_feedback_callable
+		)
+
 	state = engine.start_match(
 		match_rules,
 		match_player_one_deck,

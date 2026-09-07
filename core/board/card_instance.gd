@@ -31,7 +31,7 @@ var hero_root_turn: int = -1
 # covering her with a normal card.
 var hero_type_lock_turn: int = -1
 # Afrasiab Active is armed for this turn. If he loses directly to the enemy
-# Champion/Hero, two Poison cards are shuffled into that opponent's draw pile.
+# Champion/Hero, two Poison cards are inserted at random positions in that opponent's draw pile.
 var hero_afrasiab_active_turn: int = -1
 var hero_afrasiab_poison_triggered_turn: int = -1
 var hero_stealth_turn: int = -1 # legacy, no longer used

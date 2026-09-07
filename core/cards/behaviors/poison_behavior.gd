@@ -10,7 +10,7 @@ func on_played_to_board(context: CardBehaviorContext) -> void:
 	if owner == null or owner.board == null:
 		return
 
-	# Poison is a curse, not a combat card. Paying its 5 mana cost by playing
+	# Poison is a curse, not a combat card. Paying its 4 mana cost by playing
 	# it onto any empty legal slot immediately cleanses it into Discard.
 	var removed: CardInstance = owner.board.remove_card(context.slot_id)
 	if removed != context.source_card:

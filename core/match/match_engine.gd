@@ -1,6 +1,16 @@
 class_name MatchEngine
 extends RefCounted
 
+
+# Presentation-only event. MatchEngine still owns all Poison state changes;
+# the 3D controller listens to this to visibly fly the two created Poison
+# cards into the opponent Draw Pile.
+signal afrasiab_poison_inserted(
+	source_player_id,
+	target_player_id,
+	poison_cards
+)
+
 const BOARD_MOVE_MANA_COST: int = 1
 const ENERGY_PER_BAR: int = 15
 const MAX_ENERGY_BARS: int = 4
@@ -359,6 +369,7 @@ func _try_trigger_afrasiab_poison(
 
 	hero.hero_afrasiab_poison_triggered_turn = state.turn_number
 	var inserted: int = 0
+	var inserted_poison_cards: Array[CardInstance] = []
 	for _index: int in range(AFRASIAB_POISON_CARDS_PER_TRIGGER):
 		var poison: CardInstance = card_factory.create_card(
 			AFRASIAB_POISON_DEFINITION,
@@ -366,13 +377,27 @@ func _try_trigger_afrasiab_poison(
 		)
 		if poison == null:
 			continue
+
 		poison.zone = CardZone.Type.DRAW
 		poison.current_slot = CardInstance.NO_SLOT
-		opponent.draw_pile.append(poison)
+
+		# Insert the curse at a random position inside the existing Draw Pile.
+		# Do NOT shuffle the opponent's whole deck and do NOT put it directly
+		# into Hand. Each Poison gets its own independent random position.
+		var random_draw_index: int = randi_range(
+			0,
+			opponent.draw_pile.size()
+		)
+		opponent.draw_pile.insert(random_draw_index, poison)
+		inserted_poison_cards.append(poison)
 		inserted += 1
 
-	if inserted > 0:
-		opponent.draw_pile.shuffle()
+	if not inserted_poison_cards.is_empty():
+		afrasiab_poison_inserted.emit(
+			hero_owner_id,
+			opponent_id,
+			inserted_poison_cards
+		)
 
 	print(
 		"AFRASIAB POISON TRAP | owner=", hero_owner_id,
@@ -782,7 +807,7 @@ func can_cover_card(
 	if target_card.definition == null:
 		return false
 
-	# Poison is a curse card: paying its 5 mana cost on an empty legal slot
+	# Poison is a curse card: paying its 4 mana cost on an empty legal slot
 	# cleanses it. It can never Cover another card or be used to type-change a Hero.
 	if card.definition.card_id == &"afrasiab_poison":
 		return false
