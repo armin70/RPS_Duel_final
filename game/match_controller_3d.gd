@@ -251,6 +251,18 @@ var highlighted_drop_place: CardPlace3D
 var pending_local_cards: Array[CardInstance] = []
 var pending_bot_plays: Array[CardPlayRecord] = []
 
+# ---------------------------------------------------------
+# Lightweight online multiplayer
+# ---------------------------------------------------------
+var online_mode: bool = false
+var online_session: RPSOnlineSession
+var online_match_payload: Dictionary = {}
+var online_keep_ids_by_player: Dictionary = {1: [], 2: []}
+var online_battle_seed: int = 0
+var online_next_turn_seed: int = 0
+var online_last_reveal_turn: int = -1
+var online_remote_action_running: bool = false
+
 var deck_selection_active: bool = false
 var deck_choice_cards: Array[Card3D] = []
 var deck_selection_screen: DeckSelectionScreen
@@ -559,6 +571,7 @@ func _on_hero_active_power_requested() -> void:
 		_play_hero_active_ground_feedback(local_player_id)
 		hud.refresh(state, local_player_id)
 		_refresh_board_shield_visuals(true)
+		_send_online_public_action({"kind": "hero_active"})
 
 
 func _on_special_attack_requested() -> void:
@@ -570,6 +583,7 @@ func _on_special_attack_requested() -> void:
 	_play_special_attack_feedback(local_player_id)
 	_refresh_board_shield_visuals(true)
 	hud.refresh(state, local_player_id)
+	_send_online_public_action({"kind": "special_attack"})
 
 	if state.is_game_over():
 		_finish_game()
@@ -1238,6 +1252,14 @@ func _on_rush_sacrifice_gesture_chosen(gesture: int) -> void:
 		selected_gesture
 	)
 
+	if removed_card != null:
+		_send_online_public_action({
+			"kind": "rush_transform",
+			"target_id": target_card.instance_id,
+			"gesture": int(selected_gesture),
+			"sacrifice_id": removed_card.instance_id
+		})
+
 	if removed_card == null:
 		if is_instance_valid(rush_sacrifice_control):
 			rush_sacrifice_control.show_message(
@@ -1431,6 +1453,158 @@ func begin_rush_match() -> void:
 	await _start_match_with_selected_deck(
 		RUSH_DECK
 	)
+
+
+func begin_online_match(payload: Dictionary) -> void:
+	if state != null:
+		return
+	if payload.is_empty():
+		push_error("Online match payload is empty.")
+		return
+
+	online_mode = true
+	online_match_payload = payload.duplicate(true)
+	local_player_id = int(payload.get("seat", 1))
+	if local_player_id not in [1, 2]:
+		local_player_id = 1
+	bot_player_id = 2 if local_player_id == 1 else 1
+	rush_mode_enabled = String(payload.get("mode", "normal")) == "rush"
+	tutorial_enabled = false
+	ProjectSettings.set_setting("gameplay/hardcore_bot", false)
+
+	online_session = get_node_or_null("/root/OnlineSession")
+	if online_session == null:
+		push_error("OnlineSession autoload is missing.")
+		online_mode = false
+		return
+	_connect_online_session_signals()
+
+	deck_selection_active = false
+	interaction_locked = true
+	hud.visible = false
+	hud.set_interaction_enabled(false)
+	await _start_online_match_from_payload(payload)
+
+
+func _connect_online_session_signals() -> void:
+	if online_session == null:
+		return
+	var reveal_callable := Callable(self, "_on_online_turn_reveal")
+	if not online_session.turn_reveal.is_connected(reveal_callable):
+		online_session.turn_reveal.connect(reveal_callable)
+	var public_callable := Callable(self, "_on_online_public_action")
+	if not online_session.public_action_received.is_connected(public_callable):
+		online_session.public_action_received.connect(public_callable)
+	var disconnected_callable := Callable(self, "_on_online_opponent_disconnected")
+	if not online_session.opponent_disconnected.is_connected(disconnected_callable):
+		online_session.opponent_disconnected.connect(disconnected_callable)
+	var reconnected_callable := Callable(self, "_on_online_opponent_reconnected")
+	if not online_session.opponent_reconnected.is_connected(reconnected_callable):
+		online_session.opponent_reconnected.connect(reconnected_callable)
+
+
+func _online_setup_for_player(payload: Dictionary, player_id: int) -> Dictionary:
+	var players: Dictionary = payload.get("players", {}) as Dictionary
+	var player_data: Dictionary = players.get(str(player_id), {}) as Dictionary
+	return player_data.get("setup", {}) as Dictionary
+
+
+func _online_deck_from_index(index: int) -> DeckDefinition:
+	match index:
+		2:
+			return player_one_deck_2 if player_one_deck_2 != null else player_one_deck
+		3:
+			return player_one_deck_3 if player_one_deck_3 != null else player_one_deck
+		_:
+			return player_one_deck
+
+
+func _online_hero_from_name(hero_name: String) -> HeroDefinition:
+	match hero_name.to_lower():
+		"tahmineh":
+			return TAHMINEH_HERO
+		"afrasiab":
+			return AFRASIAB_HERO
+		_:
+			return ROSTAM_HERO
+
+
+func _online_slot_from_name(slot_name: String) -> int:
+	match slot_name.to_lower():
+		"front_left":
+			return SlotID.Type.FRONT_LEFT
+		"front_middle_0":
+			return SlotID.Type.FRONT_MIDDLE_0
+		"front_middle_1":
+			return SlotID.Type.FRONT_MIDDLE_1
+		"front_right":
+			return SlotID.Type.FRONT_RIGHT
+		"back_left":
+			return SlotID.Type.BACK_LEFT
+		"back_middle_0":
+			return SlotID.Type.BACK_MIDDLE_0
+		"back_middle_1":
+			return SlotID.Type.BACK_MIDDLE_1
+		"back_right":
+			return SlotID.Type.BACK_RIGHT
+		_:
+			return SlotID.Type.FRONT_LEFT
+
+
+func _start_online_match_from_payload(payload: Dictionary) -> void:
+	var p1_setup := _online_setup_for_player(payload, 1)
+	var p2_setup := _online_setup_for_player(payload, 2)
+	var match_rules: MatchRules = RUSH_MATCH_RULES if rush_mode_enabled else rules
+	var p1_deck: DeckDefinition
+	var p2_deck: DeckDefinition
+	if rush_mode_enabled:
+		p1_deck = RUSH_DECK
+		p2_deck = RUSH_DECK
+	else:
+		p1_deck = _online_deck_from_index(int(p1_setup.get("deck_index", 1)))
+		p2_deck = _online_deck_from_index(int(p2_setup.get("deck_index", 1)))
+
+	# Both clients start from the same global RNG seed. A fresh server seed is
+	# also supplied before every battle/next-turn shuffle, preventing visual RNG
+	# calls from desynchronising hidden deck order.
+	seed(int(payload.get("match_seed", 1)))
+	engine = MatchEngine.new()
+	var poison_feedback_callable := Callable(self, "_on_afrasiab_poison_inserted")
+	if not engine.afrasiab_poison_inserted.is_connected(poison_feedback_callable):
+		engine.afrasiab_poison_inserted.connect(poison_feedback_callable)
+
+	state = engine.start_match(
+		match_rules,
+		p1_deck,
+		p2_deck,
+		dealer_deck,
+		rush_mode_enabled
+	)
+	_apply_game_mode_visuals()
+
+	# Place both Heroes in fixed player-id order so CardInstance ids are the
+	# same on both clients. Each client only reveals its own Hero until combat.
+	if not rush_mode_enabled:
+		for player_id: int in [1, 2]:
+			var setup := p1_setup if player_id == 1 else p2_setup
+			var hero_def := _online_hero_from_name(String(setup.get("hero_kind", "rostam")))
+			var slot_id := _online_slot_from_name(String(setup.get("hero_slot", "front_left")))
+			var hero := engine.place_hero(player_id, hero_def, slot_id)
+			if hero != null:
+				hero.hero_revealed = player_id == local_player_id
+
+	await _sync_visual_state()
+	hud.visible = true
+	hud.refresh(state, local_player_id)
+	if is_instance_valid(hero_power_control):
+		hero_power_control.bind_match(engine, local_player_id)
+	if is_instance_valid(hero_energy_control):
+		hero_energy_control.bind_match(engine, local_player_id)
+	interaction_locked = false
+	hud.set_interaction_enabled(true)
+	_refresh_rush_sacrifice_ui()
+	_refresh_balance_scale()
+	print("ONLINE MATCH STARTED | seat=", local_player_id, " | mode=", payload.get("mode", "normal"))
 
 
 func _show_deck_selection_screen() -> void:
@@ -1848,6 +2022,8 @@ func _capture_fair_bot_knowledge() -> void:
 
 
 func _prepare_bot_turn() -> void:
+	if online_mode:
+		return
 	if state == null:
 		return
 
@@ -1979,6 +2155,24 @@ func _on_end_turn_pressed() -> void:
 	if player.is_ready:
 		return
 
+	# Online: the opponent is a real client. Their hidden plays stay on the
+	# Python relay until both players lock the turn; no bot planning runs here.
+	if online_mode:
+		var online_success: bool = engine.set_player_ready(local_player_id)
+		if not online_success:
+			return
+		var keep_ids: Array = []
+		for raw_id: Variant in kept_hand_card_ids.keys():
+			keep_ids.append(int(raw_id))
+		online_keep_ids_by_player[local_player_id] = keep_ids.duplicate()
+		interaction_locked = true
+		_refresh_rush_sacrifice_ui()
+		hud.set_interaction_enabled(false)
+		hud.refresh(state, local_player_id)
+		if online_session != null:
+			online_session.ready_turn(state.turn_number, keep_ids)
+		return
+
 	# Bot بعد از قفل‌شدن Turn تصمیم می‌گیرد.
 	# FAIR فقط Snapshot عمومی ابتدای Turn را می‌بیند؛
 	# کارت جدید و Move مخفی همین Turn برایش قابل شناسایی نیست.
@@ -2009,6 +2203,182 @@ func _on_end_turn_pressed() -> void:
 
 	if _are_both_players_ready():
 		await _run_reveal_and_battle()
+
+
+func _queue_online_hidden_action(action: Dictionary) -> void:
+	if not online_mode or online_session == null or state == null:
+		return
+	online_session.queue_hidden_action(action, state.turn_number)
+
+
+func _send_online_public_action(action: Dictionary) -> void:
+	if not online_mode or online_session == null:
+		return
+	online_session.send_public_action(action)
+
+
+func _find_card_instance_for_player(player_id: int, instance_id: int) -> CardInstance:
+	if state == null:
+		return null
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return null
+	if player.hero != null and player.hero.instance_id == instance_id:
+		return player.hero
+	for slot_id: int in SlotID.all_slots():
+		var board_card: CardInstance = player.board.get_card(slot_id)
+		if board_card != null and board_card.instance_id == instance_id:
+			return board_card
+	for collection_variant: Variant in [
+		player.hand,
+		player.draw_pile,
+		player.discard_pile,
+		player.reserve_pile,
+		player.pending_hero_rewards,
+		player.pending_mommy_rewards
+	]:
+		var collection: Array = collection_variant as Array
+		for card: CardInstance in collection:
+			if card != null and card.instance_id == instance_id:
+				return card
+	return null
+
+
+func _on_online_turn_reveal(payload: Dictionary) -> void:
+	if not online_mode or state == null or engine == null:
+		return
+	var reveal_turn := int(payload.get("turn", -1))
+	if reveal_turn != state.turn_number:
+		push_warning(
+			"Online turn reveal mismatch. local=%s server=%s"
+			% [state.turn_number, reveal_turn]
+		)
+		return
+	if online_last_reveal_turn == reveal_turn:
+		return
+	online_last_reveal_turn = reveal_turn
+	online_battle_seed = int(payload.get("battle_seed", 1))
+	online_next_turn_seed = int(payload.get("next_turn_seed", 1))
+
+	var meta: Dictionary = payload.get("meta", {}) as Dictionary
+	for player_id: int in [1, 2]:
+		var player_meta: Dictionary = meta.get(str(player_id), {}) as Dictionary
+		var raw_keep: Array = player_meta.get("keep_ids", []) as Array
+		var keep_ids: Array = []
+		for raw_id: Variant in raw_keep:
+			keep_ids.append(int(raw_id))
+		online_keep_ids_by_player[player_id] = keep_ids
+
+	var actions_by_player: Dictionary = payload.get("actions", {}) as Dictionary
+	var remote_actions: Array = actions_by_player.get(str(bot_player_id), []) as Array
+	engine.clear_play_records(bot_player_id)
+	online_remote_action_running = true
+	for raw_action: Variant in remote_actions:
+		if raw_action is Dictionary:
+			await _apply_online_remote_hidden_action(raw_action as Dictionary)
+	online_remote_action_running = false
+	pending_bot_plays = engine.consume_play_records(bot_player_id)
+
+	# This client's local ready was set when End Turn was pressed. The remote
+	# ready flag becomes public only now, after both hidden action lists arrived.
+	engine.set_player_ready(bot_player_id)
+	if _are_both_players_ready():
+		await _run_reveal_and_battle()
+
+
+func _apply_online_remote_hidden_action(action: Dictionary) -> void:
+	var kind := String(action.get("kind", ""))
+	match kind:
+		"play":
+			var card := _find_card_instance_for_player(
+				bot_player_id,
+				int(action.get("card_id", -1))
+			)
+			if card == null:
+				push_warning("Online remote play card was not found.")
+				return
+			engine.play_card(
+				bot_player_id,
+				card,
+				int(action.get("slot", -1))
+			)
+		"move":
+			var moving_card := _find_card_instance_for_player(
+				bot_player_id,
+				int(action.get("card_id", -1))
+			)
+			if moving_card == null:
+				push_warning("Online remote move card was not found.")
+				return
+			var from_slot := moving_card.current_slot
+			if not SlotID.is_valid(from_slot):
+				from_slot = int(action.get("from_slot", -1))
+			engine.move_board_card(
+				bot_player_id,
+				from_slot,
+				int(action.get("to_slot", -1))
+			)
+
+
+func _on_online_public_action(payload: Dictionary) -> void:
+	if not online_mode or state == null or engine == null:
+		return
+	var sender_seat := int(payload.get("sender_seat", bot_player_id))
+	if sender_seat == local_player_id:
+		return
+	var action: Dictionary = payload.get("action", {}) as Dictionary
+	var kind := String(action.get("kind", ""))
+	match kind:
+		"hero_active":
+			if engine.activate_hero_active(sender_seat):
+				_play_hero_active_ground_feedback(sender_seat)
+				_refresh_board_shield_visuals(true)
+				hud.refresh(state, local_player_id)
+		"special_attack":
+			if engine.use_special_attack(sender_seat):
+				_play_special_attack_feedback(sender_seat)
+				_refresh_board_shield_visuals(true)
+				hud.refresh(state, local_player_id)
+				if state.is_game_over():
+					_finish_game()
+		"rush_transform":
+			var target := _find_card_instance_for_player(
+				sender_seat,
+				int(action.get("target_id", -1))
+			)
+			if target == null:
+				return
+			var remote_gesture: CardGesture.Type = int(action.get("gesture", 0))
+			var removed := engine.apply_rush_transform(
+				sender_seat,
+				target,
+				remote_gesture,
+				int(action.get("sacrifice_id", -1))
+			)
+			if removed != null:
+				await _sync_visual_state()
+				hud.refresh(state, local_player_id)
+				_refresh_rush_sacrifice_ui()
+
+
+func _on_online_opponent_disconnected(reconnect_seconds: int) -> void:
+	if not online_mode:
+		return
+	interaction_locked = true
+	hud.set_interaction_enabled(false)
+	push_warning(
+		"Opponent disconnected. Waiting up to %s seconds for reconnect."
+		% reconnect_seconds
+	)
+
+
+func _on_online_opponent_reconnected() -> void:
+	if not online_mode or state == null:
+		return
+	var player := state.get_player(local_player_id)
+	if player != null and not player.is_ready and state.phase == MatchPhase.Type.MAIN:
+		interaction_locked = false
+		hud.set_interaction_enabled(true)
 
 
 func _are_both_players_ready() -> bool:
@@ -3308,6 +3678,12 @@ func _finish_card_drag(
 			card_view.return_home()
 			return
 
+		_queue_online_hidden_action({
+			"kind": "play",
+			"card_id": card.instance_id,
+			"slot": place.logical_id
+		})
+
 		# Covering a Hero consumes the normal card and changes the Hero's type.
 		# Rebuild the visuals from MatchState so the consumed hand card disappears
 		# and the Hero's type label updates immediately.
@@ -3394,6 +3770,13 @@ func _finish_card_drag(
 			card_view.return_home()
 			_vibrate_invalid_switch()
 			return
+
+		_queue_online_hidden_action({
+			"kind": "move",
+			"card_id": card.instance_id,
+			"from_slot": from_slot_id,
+			"to_slot": to_slot_id
+		})
 
 		# Hero movement can tuck the Hero under a protector, and a normal board
 		# card can be consumed to change a Hero's type. Both change which
@@ -4386,6 +4769,9 @@ func _start_animated_combat() -> void:
 
 	await _play_collector_vfx_before_combat()
 
+	if online_mode:
+		seed(online_battle_seed)
+
 	var sequence: BattleSequence = engine.begin_combat()
 
 	if sequence == null:
@@ -4426,8 +4812,16 @@ func _start_animated_combat() -> void:
 		return
 
 	var retained_cards: Array[CardInstance] = []
+	var online_retained_cards: Dictionary = {1: [], 2: []}
 	if not state.rush_mode_enabled:
-		retained_cards = _take_selected_cards_from_local_hand()
+		if online_mode:
+			for player_id: int in [1, 2]:
+				online_retained_cards[player_id] = _take_selected_cards_from_player_hand(
+					player_id,
+					online_keep_ids_by_player.get(player_id, []) as Array
+				)
+		else:
+			retained_cards = _take_selected_cards_from_local_hand()
 
 	# یادمان باشد الان چه کارت‌هایی روی زمین Dealer هستند.
 	var previous_dealer_card_ids: Dictionary = \
@@ -4436,6 +4830,8 @@ func _start_animated_combat() -> void:
 	if tutorial_controller != null and tutorial_controller.is_active():
 		tutorial_controller.prepare_next_dealer_before_finish_combat()
 
+	if online_mode:
+		seed(online_next_turn_seed)
 	engine.finish_combat()
 
 	# Rush penalties are already removed from MatchState, but the OLD hand
@@ -4444,13 +4840,21 @@ func _start_animated_combat() -> void:
 	if state.rush_mode_enabled:
 		await _play_rush_unused_mana_penalty_visuals()
 
-	_restore_retained_cards_to_local_hand(
-		retained_cards
-	)
-
-	_return_excess_local_hand_cards_to_draw_pile()
+	if online_mode and not state.rush_mode_enabled:
+		for player_id: int in [1, 2]:
+			_restore_retained_cards_to_player_hand(
+				player_id,
+				online_retained_cards.get(player_id, []) as Array
+			)
+			_return_excess_hand_cards_to_draw_pile(player_id)
+	else:
+		_restore_retained_cards_to_local_hand(
+			retained_cards
+		)
+		_return_excess_local_hand_cards_to_draw_pile()
 
 	kept_hand_card_ids.clear()
+	online_keep_ids_by_player = {1: [], 2: []}
 
 	if state.is_game_over():
 		await _sync_visual_state()
@@ -5481,6 +5885,60 @@ func _play_rush_unused_mana_penalty_visuals() -> void:
 		await get_tree().create_timer(longest_duration).timeout
 
 
+func _take_selected_cards_from_player_hand(
+	player_id: int,
+	keep_ids: Array
+) -> Array[CardInstance]:
+	var retained_cards: Array[CardInstance] = []
+	if state == null:
+		return retained_cards
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return retained_cards
+	var keep_lookup: Dictionary = {}
+	for raw_id: Variant in keep_ids:
+		keep_lookup[int(raw_id)] = true
+	for index: int in range(player.hand.size() - 1, -1, -1):
+		var card: CardInstance = player.hand[index]
+		if card == null or not keep_lookup.has(card.instance_id):
+			continue
+		player.hand.remove_at(index)
+		retained_cards.push_front(card)
+	return retained_cards
+
+
+func _restore_retained_cards_to_player_hand(
+	player_id: int,
+	retained_cards: Array
+) -> void:
+	if state == null:
+		return
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return
+	for index: int in range(retained_cards.size()):
+		var card := retained_cards[index] as CardInstance
+		if card == null:
+			continue
+		card.zone = CardZone.Type.HAND
+		player.hand.insert(index, card)
+
+
+func _return_excess_hand_cards_to_draw_pile(player_id: int) -> void:
+	if state == null:
+		return
+	var player: PlayerState = state.get_player(player_id)
+	if player == null:
+		return
+	while player.hand.size() > MAX_HAND_CARDS:
+		var card: CardInstance = player.hand.pop_back()
+		if card == null:
+			continue
+		card.zone = CardZone.Type.DRAW
+		card.current_slot = CardInstance.NO_SLOT
+		player.draw_pile.append(card)
+
+
 func _take_selected_cards_from_local_hand() -> Array[CardInstance]:
 	var retained_cards: Array[CardInstance] = []
 
@@ -6494,6 +6952,8 @@ func _reveal_removed_card_views(
 	).timeout
 func _finish_game() -> void:
 	interaction_locked = true
+	if online_mode and online_session != null and state != null:
+		online_session.report_match_end(state.winner_id)
 
 	hud.set_interaction_enabled(false)
 

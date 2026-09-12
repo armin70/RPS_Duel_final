@@ -721,7 +721,8 @@ func get_rush_sacrifice_candidates(
 func apply_rush_transform(
 	player_id: int,
 	target_card: CardInstance,
-	new_gesture: CardGesture.Type
+	new_gesture: CardGesture.Type,
+	forced_sacrifice_instance_id: int = -1
 ) -> CardInstance:
 	if not can_rush_transform_card(player_id, target_card):
 		return null
@@ -746,8 +747,17 @@ func apply_rush_transform(
 	if candidates.is_empty():
 		return null
 
-	# The player chooses the target type. Only the payment card is random.
-	var sacrifice_card: CardInstance = candidates.pick_random()
+	# Online play can replay the exact sacrifice chosen by the originating
+	# client. Offline/Rush bot behavior keeps the existing random payment.
+	var sacrifice_card: CardInstance = null
+	if forced_sacrifice_instance_id >= 0:
+		for candidate: CardInstance in candidates:
+			if candidate != null and candidate.instance_id == forced_sacrifice_instance_id:
+				sacrifice_card = candidate
+				break
+	else:
+		sacrifice_card = candidates.pick_random()
+
 	if sacrifice_card == null:
 		return null
 

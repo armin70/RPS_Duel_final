@@ -19,6 +19,8 @@ config/icon="uid://ci4yringcijm"
 [autoload]
 
 MusicManager="*uid://cdoe50rvfsbil"
+OnlineSession="*res://online/online_session.gd"
+OnlineBootstrap="*res://online/online_bootstrap.gd"
 
 [display]
 
