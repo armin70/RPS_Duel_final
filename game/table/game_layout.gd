@@ -168,6 +168,7 @@ func _late_apply_reference_layout() -> void:
 	_configure_reference_ground()
 	_apply_reference_field_layout()
 	_configure_reference_hands()
+	_configure_board_places()
 
 
 func _stabilize_initial_reference_layout() -> void:
@@ -443,8 +444,13 @@ func _configure_dealer_places() -> void:
 
 
 func _configure_board_places() -> void:
-	for player_id: int in board_places:
-		var player_places: Dictionary = board_places[player_id]
+	for visual_player_id: int in board_places:
+		var player_places: Dictionary = board_places[
+			visual_player_id
+		]
+		var logical_owner_id: int = _visual_to_logical_player_id(
+			visual_player_id
+		)
 
 		for slot_id: int in player_places:
 			var place := (
@@ -454,7 +460,7 @@ func _configure_board_places() -> void:
 			_configure_place(
 				place,
 				CardPlace3D.Kind.PLAYER_BOARD,
-				player_id,
+				logical_owner_id,
 				slot_id
 			)
 
@@ -492,12 +498,61 @@ func get_dealer_anchor(
 	return place.card_anchor
 
 
+func _get_local_view_player_id() -> int:
+	# Offline/single-player always uses Player 1 as the local visual side.
+	# In Online mode the server seat is logical identity only. Both clients
+	# should still see THEMSELVES on the same near/player side of the board.
+	var session := get_node_or_null("/root/OnlineSession")
+	if session == null:
+		return 1
+
+	var current_match_variant = session.get("current_match")
+	if not (current_match_variant is Dictionary):
+		return 1
+
+	var current_match: Dictionary = current_match_variant
+	if current_match.is_empty():
+		return 1
+
+	var seat: int = int(current_match.get("seat", 1))
+	if seat not in [1, 2]:
+		return 1
+
+	return seat
+
+
+func _logical_to_visual_player_id(logical_player_id: int) -> int:
+	if logical_player_id not in [1, 2]:
+		return logical_player_id
+
+	var local_view_player_id: int = _get_local_view_player_id()
+
+	# Visual side 1 is always "me"; visual side 2 is always "opponent".
+	if logical_player_id == local_view_player_id:
+		return 1
+	return 2
+
+
+func _visual_to_logical_player_id(visual_player_id: int) -> int:
+	if visual_player_id not in [1, 2]:
+		return visual_player_id
+
+	var local_view_player_id: int = _get_local_view_player_id()
+
+	if visual_player_id == 1:
+		return local_view_player_id
+	return 2 if local_view_player_id == 1 else 1
+
+
 func get_board_place(
 	player_id: int,
 	slot_id: int
 ) -> CardPlace3D:
+	var visual_player_id: int = _logical_to_visual_player_id(
+		player_id
+	)
 	var player_places: Dictionary = board_places.get(
-		player_id,
+		visual_player_id,
 		{}
 	)
 
@@ -513,8 +568,11 @@ func get_hand_transform(
 	card_count: int
 ) -> Transform3D:
 	var hand_origin: Node3D
+	var visual_player_id: int = _logical_to_visual_player_id(
+		player_id
+	)
 
-	if player_id == 1:
+	if visual_player_id == 1:
 		hand_origin = player_hand_origin
 	else:
 		hand_origin = opponent_hand_origin
@@ -547,9 +605,12 @@ func get_pile_entity(
 	player_id: int,
 	pile_type: CardPile3D.Type
 ) -> CardPile3D:
+	var visual_player_id: int = _logical_to_visual_player_id(
+		player_id
+	)
 	var player_piles: Dictionary = \
 		pile_entities.get(
-			player_id,
+			visual_player_id,
 			{}
 		)
 
