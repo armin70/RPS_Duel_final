@@ -48,10 +48,12 @@ func _try_hook_menu() -> void:
 	# Main menu design resolution is 2400x1080, so these offsets scale with the
 	# existing canvas stretch exactly like the other menu hit areas.
 	button.set_anchors_preset(Control.PRESET_TOP_LEFT)
-	button.offset_left = 980.0
-	button.offset_top = 565.0
-	button.offset_right = 1245.0
-	button.offset_bottom = 705.0
+	# Keep Online on its own slot: second row, to the RIGHT of Tutorial.
+	# Previous coordinates overlapped the Single Player/Tutorial hit areas.
+	button.offset_left = 1380.0
+	button.offset_top = 650.0
+	button.offset_right = 1645.0
+	button.offset_bottom = 790.0
 
 	button.add_theme_font_size_override("font_size", 46)
 	button.add_theme_color_override(

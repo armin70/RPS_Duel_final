@@ -262,6 +262,8 @@ var online_battle_seed: int = 0
 var online_next_turn_seed: int = 0
 var online_last_reveal_turn: int = -1
 var online_remote_action_running: bool = false
+var online_setup_stage: String = ""
+var online_setup_transition_running: bool = false
 
 var deck_selection_active: bool = false
 var deck_choice_cards: Array[Card3D] = []
@@ -471,6 +473,22 @@ func _try_choose_hero_ground_slot(screen_position: Vector2) -> bool:
 	_clear_hero_slot_highlights()
 	if is_instance_valid(hero_selection_control):
 		hero_selection_control.finish_ground_selection()
+
+	if online_mode and not rush_mode_enabled and online_session != null:
+		online_setup_stage = "waiting_hero"
+		online_session.submit_match_setup(
+			"hero",
+			{
+				"hero_kind": _online_hero_name(
+					hero_setup_definition
+				),
+				"hero_slot": _online_slot_name(
+					hero_setup_slot_id
+				)
+			}
+		)
+		print("ONLINE SETUP | local Hero submitted")
+
 	return true
 
 
@@ -1483,12 +1501,52 @@ func begin_online_match(payload: Dictionary) -> void:
 	interaction_locked = true
 	hud.visible = false
 	hud.set_interaction_enabled(false)
-	await _start_online_match_from_payload(payload)
+
+	if rush_mode_enabled:
+		await _start_online_match_from_payload(payload)
+		return
+
+	await _begin_online_normal_setup(payload)
+
+
+func _begin_online_normal_setup(payload: Dictionary) -> void:
+	online_match_payload = payload.duplicate(true)
+	var local_setup := _online_setup_for_player(
+		payload,
+		local_player_id
+	)
+	var opponent_setup := _online_setup_for_player(
+		payload,
+		bot_player_id
+	)
+
+	var local_has_deck := int(local_setup.get("deck_index", 0)) in [1, 2, 3]
+	var opponent_has_deck := int(opponent_setup.get("deck_index", 0)) in [1, 2, 3]
+
+	if local_has_deck and opponent_has_deck:
+		await _start_online_after_deck_setup(payload)
+		return
+
+	if local_has_deck:
+		online_setup_stage = "waiting_deck"
+		print("ONLINE SETUP | waiting for opponent deck")
+		return
+
+	online_setup_stage = "deck"
+	deck_selection_active = true
+	interaction_locked = true
+	hud.visible = false
+	hud.set_interaction_enabled(false)
+	_show_deck_selection_screen()
+	print("ONLINE SETUP | choose local deck")
 
 
 func _connect_online_session_signals() -> void:
 	if online_session == null:
 		return
+	var setup_callable := Callable(self, "_on_online_match_setup_ready")
+	if not online_session.match_setup_ready.is_connected(setup_callable):
+		online_session.match_setup_ready.connect(setup_callable)
 	var reveal_callable := Callable(self, "_on_online_turn_reveal")
 	if not online_session.turn_reveal.is_connected(reveal_callable):
 		online_session.turn_reveal.connect(reveal_callable)
@@ -1517,6 +1575,44 @@ func _online_deck_from_index(index: int) -> DeckDefinition:
 			return player_one_deck_3 if player_one_deck_3 != null else player_one_deck
 		_:
 			return player_one_deck
+
+
+func _online_index_for_deck(selected_deck: DeckDefinition) -> int:
+	if selected_deck == player_one_deck_2:
+		return 2
+	if selected_deck == player_one_deck_3:
+		return 3
+	return 1
+
+
+func _online_hero_name(hero_definition: HeroDefinition) -> String:
+	if hero_definition == TAHMINEH_HERO:
+		return "tahmineh"
+	if hero_definition == AFRASIAB_HERO:
+		return "afrasiab"
+	return "rostam"
+
+
+func _online_slot_name(slot_id: int) -> String:
+	match slot_id:
+		SlotID.Type.FRONT_LEFT:
+			return "front_left"
+		SlotID.Type.FRONT_MIDDLE_0:
+			return "front_middle_0"
+		SlotID.Type.FRONT_MIDDLE_1:
+			return "front_middle_1"
+		SlotID.Type.FRONT_RIGHT:
+			return "front_right"
+		SlotID.Type.BACK_LEFT:
+			return "back_left"
+		SlotID.Type.BACK_MIDDLE_0:
+			return "back_middle_0"
+		SlotID.Type.BACK_MIDDLE_1:
+			return "back_middle_1"
+		SlotID.Type.BACK_RIGHT:
+			return "back_right"
+		_:
+			return "front_left"
 
 
 func _online_hero_from_name(hero_name: String) -> HeroDefinition:
@@ -1549,6 +1645,185 @@ func _online_slot_from_name(slot_name: String) -> int:
 			return SlotID.Type.BACK_RIGHT
 		_:
 			return SlotID.Type.FRONT_LEFT
+
+
+func _on_online_match_setup_ready(payload: Dictionary) -> void:
+	if not online_mode or rush_mode_enabled:
+		return
+	online_match_payload = payload.duplicate(true)
+	var stage := String(payload.get("stage", ""))
+
+	if stage == "deck" and state == null:
+		if online_setup_transition_running:
+			return
+		online_setup_transition_running = true
+		await _start_online_after_deck_setup(payload)
+		online_setup_transition_running = false
+		return
+
+	if stage == "hero" and state != null:
+		if online_setup_transition_running:
+			return
+		online_setup_transition_running = true
+		await _finalize_online_hero_setup(payload)
+		online_setup_transition_running = false
+
+
+func _start_online_after_deck_setup(payload: Dictionary) -> void:
+	if state != null:
+		return
+
+	online_match_payload = payload.duplicate(true)
+	online_setup_stage = "hero"
+
+	var p1_setup := _online_setup_for_player(payload, 1)
+	var p2_setup := _online_setup_for_player(payload, 2)
+	var p1_deck := _online_deck_from_index(
+		int(p1_setup.get("deck_index", 1))
+	)
+	var p2_deck := _online_deck_from_index(
+		int(p2_setup.get("deck_index", 1))
+	)
+
+	seed(int(payload.get("match_seed", 1)))
+	engine = MatchEngine.new()
+	var poison_feedback_callable := Callable(
+		self,
+		"_on_afrasiab_poison_inserted"
+	)
+	if not engine.afrasiab_poison_inserted.is_connected(
+		poison_feedback_callable
+	):
+		engine.afrasiab_poison_inserted.connect(
+			poison_feedback_callable
+		)
+
+	state = engine.start_match(
+		rules,
+		p1_deck,
+		p2_deck,
+		dealer_deck,
+		false
+	)
+	_apply_game_mode_visuals()
+
+	await _sync_visual_state()
+	hud.visible = true
+	hud.refresh(state, local_player_id)
+	hud.set_interaction_enabled(false)
+	interaction_locked = true
+
+	var local_setup := _online_setup_for_player(
+		payload,
+		local_player_id
+	)
+	var opponent_setup := _online_setup_for_player(
+		payload,
+		bot_player_id
+	)
+	var local_has_hero := (
+		not String(local_setup.get("hero_kind", "")).is_empty()
+		and not String(local_setup.get("hero_slot", "")).is_empty()
+	)
+	var opponent_has_hero := (
+		not String(opponent_setup.get("hero_kind", "")).is_empty()
+		and not String(opponent_setup.get("hero_slot", "")).is_empty()
+	)
+
+	if local_has_hero and opponent_has_hero:
+		await _finalize_online_hero_setup(payload)
+		return
+
+	if local_has_hero:
+		online_setup_stage = "waiting_hero"
+		print("ONLINE SETUP | waiting for opponent Hero")
+		return
+
+	_begin_online_local_hero_selection()
+
+
+func _begin_online_local_hero_selection() -> void:
+	if engine == null or state == null:
+		return
+
+	_ensure_hero_selection_control()
+	if not is_instance_valid(hero_selection_control):
+		return
+
+	hero_setup_definition = null
+	hero_setup_slot_id = -1
+	hero_setup_waiting = true
+	hero_opponent_selection_waiting = false
+	hero_ground_selection_active = false
+	online_setup_stage = "hero"
+
+	hero_selection_control.configure(
+		_get_available_heroes(),
+		"هیروی خودت را انتخاب کن",
+		"هیرو را انتخاب کن؛ بعد جای شروعش را روی زمین خودت مشخص کن."
+	)
+
+
+func _finalize_online_hero_setup(payload: Dictionary) -> void:
+	if engine == null or state == null:
+		return
+
+	online_match_payload = payload.duplicate(true)
+	online_setup_stage = "starting"
+
+	# Both clients place Heroes in the same fixed player-id order so all
+	# CardInstance ids stay deterministic.
+	for player_id: int in [1, 2]:
+		var player := state.get_player(player_id)
+		if player != null and player.hero != null:
+			continue
+
+		var setup := _online_setup_for_player(payload, player_id)
+		var hero_name := String(setup.get("hero_kind", ""))
+		var slot_name := String(setup.get("hero_slot", ""))
+		if hero_name.is_empty() or slot_name.is_empty():
+			return
+
+		var hero_def := _online_hero_from_name(hero_name)
+		var slot_id := _online_slot_from_name(slot_name)
+		var hero := engine.place_hero(
+			player_id,
+			hero_def,
+			slot_id
+		)
+		if hero != null:
+			hero.hero_revealed = player_id == local_player_id
+
+	_rebuild_visual_board_slots_from_state()
+
+	if is_instance_valid(hero_selection_control):
+		hero_selection_control.queue_free()
+		hero_selection_control = null
+
+	hero_setup_waiting = false
+	hero_ground_selection_active = false
+	_clear_hero_slot_highlights()
+
+	await _sync_visual_state()
+	hud.visible = true
+	hud.refresh(state, local_player_id)
+
+	if is_instance_valid(hero_power_control):
+		hero_power_control.bind_match(engine, local_player_id)
+	if is_instance_valid(hero_energy_control):
+		hero_energy_control.bind_match(engine, local_player_id)
+
+	interaction_locked = false
+	hud.set_interaction_enabled(true)
+	_refresh_rush_sacrifice_ui()
+	_refresh_balance_scale()
+	online_setup_stage = "playing"
+
+	print(
+		"ONLINE MATCH STARTED | seat=",
+		local_player_id,
+		" | deck+hero setup complete"
+	)
 
 
 func _start_online_match_from_payload(payload: Dictionary) -> void:
@@ -1659,6 +1934,20 @@ func _on_deck_definition_selected(
 
 	_clear_deck_choice_cards()
 	await get_tree().process_frame
+
+	if online_mode and not rush_mode_enabled:
+		online_setup_stage = "waiting_deck"
+		if online_session != null:
+			online_session.submit_match_setup(
+				"deck",
+				{
+					"deck_index": _online_index_for_deck(
+						selected_deck
+					)
+				}
+			)
+		print("ONLINE SETUP | local deck submitted")
+		return
 
 	await _start_match_with_selected_deck(
 		selected_deck
