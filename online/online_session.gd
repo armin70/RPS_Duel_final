@@ -37,6 +37,11 @@ var _poll_failures: int = 0
 var _command_queue: Array[Dictionary] = []
 var _active_command: Dictionary = {}
 
+# Reliable HTTPS transport state.
+var _last_event_id: int = 0
+var _command_sequence: int = 0
+var _command_session_nonce: String = ""
+
 var _auth_http: HTTPRequest
 var _poll_http: HTTPRequest
 var _command_http: HTTPRequest
@@ -45,6 +50,10 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_config()
 	server_url = FIXED_SERVER_URL
+	_command_session_nonce = "%s-%s" % [
+		str(Time.get_ticks_usec()),
+		str(randi())
+	]
 
 	_auth_http = HTTPRequest.new()
 	_auth_http.name = "OnlineAuthHTTP"
@@ -110,7 +119,11 @@ func connect_server(new_username: String = "") -> void:
 
 	var body := JSON.stringify({
 		"token": token,
-		"username": username
+		"username": username,
+		# Connecting from the Online Lobby means "I want a fresh lobby".
+		# The server must close any abandoned room from an older play session
+		# instead of auto-resuming it.
+		"fresh_lobby": true
 	})
 	var headers := PackedStringArray(["Content-Type: application/json"])
 	_auth_in_flight = true
@@ -157,10 +170,25 @@ func accept_friend(user_id: int) -> void:
 	_send({"type": "friend_accept", "user_id": user_id})
 
 func join_matchmaking(mode: String) -> void:
+	# FIND NORMAL/RUSH always means a brand-new room. Clear any stale local
+	# match payload immediately; the server independently closes the old room.
+	current_match.clear()
+	_poll_wait = 0.0
 	_send({"type": "matchmaking_join", "mode": mode, "setup": {}})
 
 func cancel_matchmaking() -> void:
 	_send({"type": "matchmaking_cancel"})
+
+
+func leave_current_match() -> void:
+	# Used when the player intentionally leaves an online room. Clear local
+	# state first so no stale room can affect the lobby while the command is
+	# traveling over HTTPS.
+	current_match.clear()
+	_poll_wait = 0.0
+	if _connected:
+		_send({"type": "match_leave"})
+
 
 func invite_friend(user_id: int, mode: String) -> void:
 	_send({"type": "match_invite", "user_id": user_id, "mode": mode, "setup": {}})
@@ -192,7 +220,16 @@ func _send(payload: Dictionary) -> void:
 	if not _connected:
 		status_changed.emit("Connect first")
 		return
-	_command_queue.append(payload.duplicate(true))
+
+	var queued := payload.duplicate(true)
+	if not queued.has("client_command_id"):
+		_command_sequence += 1
+		queued["client_command_id"] = "%s-%s" % [
+			_command_session_nonce,
+			str(_command_sequence)
+		]
+
+	_command_queue.append(queued)
 
 func _start_next_command() -> void:
 	if _command_queue.is_empty() or not _connected:
@@ -215,8 +252,9 @@ func _start_poll() -> void:
 	if not _connected or token.is_empty():
 		return
 	_poll_in_flight = true
+	var poll_path := "/api/events?after=%s" % _last_event_id
 	var err := _poll_http.request(
-		_api_url("/api/events"),
+		_api_url(poll_path),
 		_auth_headers(),
 		HTTPClient.METHOD_GET
 	)
@@ -247,6 +285,7 @@ func _on_auth_completed(
 	_connected = not token.is_empty() and not user.is_empty()
 	_poll_failures = 0
 	_poll_wait = 0.0
+	_last_event_id = int(payload.get("event_cursor", 0))
 	_save_config()
 
 	if not _connected:
@@ -277,7 +316,7 @@ func _on_poll_completed(
 		return
 
 	_poll_failures = 0
-	_dispatch_events(payload.get("events", []))
+	_dispatch_reliable_events(payload.get("events", []))
 
 func _on_command_completed(
 	result: int,
@@ -311,6 +350,28 @@ func _register_poll_failure(message: String) -> void:
 		status_changed.emit(message)
 		disconnected.emit()
 
+func _dispatch_reliable_events(value) -> void:
+	if not (value is Array):
+		return
+
+	for item in value:
+		if not (item is Dictionary):
+			continue
+
+		var payload := item as Dictionary
+		var event_id := int(payload.get("_http_event_id", 0))
+
+		# The same response can safely be delivered twice after a timeout.
+		if event_id > 0 and event_id <= _last_event_id:
+			continue
+
+		_handle_packet(payload)
+
+		# Advance only after the event reached the game-side dispatcher.
+		if event_id > _last_event_id:
+			_last_event_id = event_id
+
+
 func _dispatch_events(value) -> void:
 	if not (value is Array):
 		return
@@ -320,6 +381,30 @@ func _dispatch_events(value) -> void:
 
 func _handle_packet(payload: Dictionary) -> void:
 	var message_type := String(payload.get("type", ""))
+	var packet_match_id := String(payload.get("match_id", ""))
+
+	# Durable HTTPS events may arrive after a room was intentionally closed.
+	# Never let an event from an old room mutate the new/current match.
+	var room_scoped_types := [
+		"match_setup_waiting",
+		"match_setup_ready",
+		"opponent_ready",
+		"opponent_disconnected",
+		"opponent_reconnected",
+		"turn_reveal",
+		"public_action",
+		"hidden_action_ok",
+	]
+	if (
+		message_type in room_scoped_types
+		and not packet_match_id.is_empty()
+		and (
+			current_match.is_empty()
+			or packet_match_id != String(current_match.get("match_id", ""))
+		)
+	):
+		return
+
 	match message_type:
 		"friend_list":
 			friend_list_updated.emit(payload)
@@ -362,8 +447,15 @@ func _handle_packet(payload: Dictionary) -> void:
 		"public_action":
 			public_action_received.emit(payload)
 		"match_closed":
-			current_match.clear()
-			status_changed.emit("Match closed")
+			var closed_match_id := String(payload.get("match_id", ""))
+			var active_match_id := String(current_match.get("match_id", ""))
+			if (
+				active_match_id.is_empty()
+				or closed_match_id.is_empty()
+				or closed_match_id == active_match_id
+			):
+				current_match.clear()
+				status_changed.emit("Match closed")
 		"error":
 			var message := String(payload.get("message", "Server error"))
 			status_changed.emit(message)

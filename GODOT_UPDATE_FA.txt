@@ -1,0 +1,9 @@
+Extract on the Godot project root and Replace All.
+
+This changes only:
+online/online_session.gd
+
+Why:
+HTTP events now use an acknowledgement cursor, so turn_reveal cannot disappear
+just because one polling response was lost. Commands also carry stable IDs so
+a retried POST cannot execute the same hidden action twice.

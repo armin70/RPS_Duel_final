@@ -498,10 +498,53 @@ func get_dealer_anchor(
 	return place.card_anchor
 
 
+func _controller_bool_property(
+	controller: Node,
+	property_name: StringName
+) -> bool:
+	if controller == null:
+		return false
+
+	for property_info: Dictionary in controller.get_property_list():
+		if StringName(property_info.get("name", "")) == property_name:
+			return bool(controller.get(property_name))
+
+	return false
+
+
+func _is_online_match_active() -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+
+	var controller := tree.get_first_node_in_group(
+		&"match_controller"
+	)
+
+	if controller == null:
+		return false
+
+	# Current controller uses `online_mode`. Keep the legacy property check too
+	# so older main_game scene/script combinations do not break this fix.
+	if _controller_bool_property(controller, &"online_mode"):
+		return true
+
+	return _controller_bool_property(
+		controller,
+		&"online_mode_enabled"
+	)
+
+
 func _get_local_view_player_id() -> int:
-	# Offline/single-player always uses Player 1 as the local visual side.
-	# In Online mode the server seat is logical identity only. Both clients
-	# should still see THEMSELVES on the same near/player side of the board.
+	# IMPORTANT:
+	# A stale OnlineSession.current_match can survive after leaving an online
+	# match. It must NEVER change the Single Player camera/hand ownership.
+	#
+	# Only a controller that is actively running an online match may swap the
+	# logical server seat onto the local visual side.
+	if not _is_online_match_active():
+		return 1
+
 	var session := get_node_or_null("/root/OnlineSession")
 	if session == null:
 		return 1
