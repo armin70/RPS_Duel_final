@@ -14,13 +14,22 @@ signal opponent_disconnected(reconnect_seconds: int)
 signal opponent_reconnected
 signal turn_reveal(payload: Dictionary)
 signal public_action_received(payload: Dictionary)
+signal hidden_action_accepted(payload: Dictionary)
+signal hidden_state_action(payload: Dictionary)
+signal turn_ready_accepted(turn_number: int)
+signal combat_start(payload: Dictionary)
+signal turn_start(payload: Dictionary)
+signal state_desync(payload: Dictionary)
+signal game_over_commit(payload: Dictionary)
+signal transport_interrupted
+signal transport_restored
 signal server_error(message: String)
 
 const CONFIG_PATH := "user://rps_online.cfg"
 const FIXED_SERVER_URL := "https://game.lingonikacademy.ir"
 const LOBBY_POLL_SECONDS := 1.5
-const MATCH_POLL_SECONDS := 0.5
-const MAX_POLL_FAILURES := 8
+const MATCH_POLL_SECONDS := 0.20
+const MAX_POLL_FAILURES := 60
 
 var server_url: String = FIXED_SERVER_URL
 var username: String = "Player"
@@ -39,6 +48,7 @@ var _active_command: Dictionary = {}
 
 # Reliable HTTPS transport state.
 var _last_event_id: int = 0
+var _server_epoch: String = ""
 var _command_sequence: int = 0
 var _command_session_nonce: String = ""
 
@@ -174,7 +184,7 @@ func join_matchmaking(mode: String) -> void:
 	# match payload immediately; the server independently closes the old room.
 	current_match.clear()
 	_poll_wait = 0.0
-	_send({"type": "matchmaking_join", "mode": mode, "setup": {}})
+	_send({"type": "matchmaking_join", "mode": mode, "setup": {}, "protocol_version": 6})
 
 func cancel_matchmaking() -> void:
 	_send({"type": "matchmaking_cancel"})
@@ -207,11 +217,31 @@ func submit_match_setup(stage: String, setup: Dictionary) -> void:
 func queue_hidden_action(action: Dictionary, turn_number: int) -> void:
 	_send({"type": "hidden_action", "turn": turn_number, "action": action})
 
-func send_public_action(action: Dictionary) -> void:
-	_send({"type": "public_action", "action": action})
+func send_public_action(action: Dictionary, turn_number: int = -1) -> void:
+	_send({"type": "public_action", "turn": turn_number, "action": action})
 
 func ready_turn(turn_number: int, keep_ids: Array) -> void:
 	_send({"type": "turn_ready", "turn": turn_number, "keep_ids": keep_ids})
+
+func reveal_ready(turn_number: int) -> void:
+	_send({"type": "reveal_ready", "turn": turn_number})
+
+func complete_turn(
+	turn_number: int,
+	state_digest: String,
+	game_over: bool = false,
+	winner_seat: int = 0
+) -> void:
+	_send({
+		"type": "turn_complete",
+		"turn": turn_number,
+		"state_digest": state_digest,
+		"game_over": game_over,
+		"winner_seat": winner_seat
+	})
+
+func report_client_fault(turn_number: int, reason: String) -> void:
+	_send({"type": "client_fault", "turn": turn_number, "reason": reason})
 
 func report_match_end(winner_seat: int) -> void:
 	_send({"type": "match_end", "winner_seat": winner_seat})
@@ -286,6 +316,7 @@ func _on_auth_completed(
 	_poll_failures = 0
 	_poll_wait = 0.0
 	_last_event_id = int(payload.get("event_cursor", 0))
+	_server_epoch = String(payload.get("server_epoch", ""))
 	_save_config()
 
 	if not _connected:
@@ -315,8 +346,43 @@ func _on_poll_completed(
 		_register_poll_failure("Invalid polling response")
 		return
 
+	var response_epoch := String(payload.get("server_epoch", ""))
+	if not _server_epoch.is_empty() and not response_epoch.is_empty() and response_epoch != _server_epoch:
+		state_desync.emit({
+			"type": "state_desync",
+			"match_id": String(current_match.get("match_id", "")),
+			"turn": int(current_match.get("turn", 0)),
+			"reason": "server_restarted"
+		})
+		_server_epoch = response_epoch
+		return
+	var incoming_events: Array = payload.get("events", []) as Array
+	var has_terminal_event := false
+	for raw_event: Variant in incoming_events:
+		if raw_event is Dictionary:
+			var terminal_type := String((raw_event as Dictionary).get("type", ""))
+			if terminal_type in ["game_over_commit", "match_closed", "state_desync"]:
+				has_terminal_event = true
+				break
+	if (
+		not current_match.is_empty()
+		and not bool(payload.get("match_active", true))
+		and not has_terminal_event
+	):
+		state_desync.emit({
+			"type": "state_desync",
+			"match_id": String(current_match.get("match_id", "")),
+			"turn": int(current_match.get("turn", 0)),
+			"reason": "server_room_missing"
+		})
+		return
+
+	var had_failures := _poll_failures > 0
 	_poll_failures = 0
-	_dispatch_reliable_events(payload.get("events", []))
+	if had_failures:
+		transport_restored.emit()
+		status_changed.emit("Connection restored")
+	_dispatch_reliable_events(incoming_events)
 
 func _on_command_completed(
 	result: int,
@@ -343,12 +409,20 @@ func _on_command_completed(
 
 func _register_poll_failure(message: String) -> void:
 	_poll_failures += 1
+	if _poll_failures == 1:
+		transport_interrupted.emit()
 	if _poll_failures >= 3:
 		status_changed.emit("Connection unstable; retrying...")
+
+	if not current_match.is_empty():
+		_poll_wait = 1.0
+		return
+
 	if _poll_failures >= MAX_POLL_FAILURES:
 		_connected = false
 		status_changed.emit(message)
 		disconnected.emit()
+
 
 func _dispatch_reliable_events(value) -> void:
 	if not (value is Array):
@@ -394,6 +468,13 @@ func _handle_packet(payload: Dictionary) -> void:
 		"turn_reveal",
 		"public_action",
 		"hidden_action_ok",
+		"hidden_action_accepted",
+		"hidden_state_action",
+		"turn_ready_accepted",
+		"combat_start",
+		"turn_start",
+		"state_desync",
+		"game_over_commit",
 	]
 	if (
 		message_type in room_scoped_types
@@ -446,6 +527,20 @@ func _handle_packet(payload: Dictionary) -> void:
 			turn_reveal.emit(payload)
 		"public_action":
 			public_action_received.emit(payload)
+		"hidden_action_accepted":
+			hidden_action_accepted.emit(payload)
+		"hidden_state_action":
+			hidden_state_action.emit(payload)
+		"turn_ready_accepted":
+			turn_ready_accepted.emit(int(payload.get("turn", 0)))
+		"combat_start":
+			combat_start.emit(payload)
+		"turn_start":
+			turn_start.emit(payload)
+		"state_desync":
+			state_desync.emit(payload)
+		"game_over_commit":
+			game_over_commit.emit(payload)
 		"match_closed":
 			var closed_match_id := String(payload.get("match_id", ""))
 			var active_match_id := String(current_match.get("match_id", ""))
